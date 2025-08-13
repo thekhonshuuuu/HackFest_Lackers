@@ -75,7 +75,7 @@ void displayMenuFlash(int selected);
 void showTypeWriter(void);
 void showFlash(void);
 void showGuessingGame(void);
-void showsuduko(void);
+void showChatbot(void);
 
 // flash subfeatures
 void showAddCard(void);
@@ -416,15 +416,21 @@ GameData loadGameData(void) {
 char getSingleChar(void) {
     char input[100];
     while (1) {
-        printf("Enter a letter: ");
+        printf("Enter a letter (or type 'exit' to quit): ");
         if (fgets(input, sizeof(input), stdin)) {
             input[strcspn(input, "\n")] = '\0';
+            
+            // Check for exit command
+            if (strcmp(input, "exit") == 0 || strcmp(input, "EXIT") == 0) {
+                return '0'; // Special return value for exit
+            }
+            
             if (strlen(input) == 1 && ((input[0] >= 'a' && input[0] <= 'z') || (input[0] >= 'A' && input[0] <= 'Z'))) {
                 char ch = input[0]; 
                 if (ch >= 'A' && ch <= 'Z') ch = (char)(ch + 32); 
                 return ch;
             }
-            printf("Invalid input! Please enter a single letter.\n");
+            printf("Invalid input! Please enter a single letter or 'exit' to quit.\n");
         }
     }
 }
@@ -472,6 +478,16 @@ void playGuessingGame(void) {
         printf("\n\n");
 
         char guess = getSingleChar();
+
+        /* ---- FIX: handle exit command cleanly ---- */
+        if (guess == '0') {
+            printf("\nExiting to menu...\n");
+               printf("Enter a any key to continue.....");
+            _getch();
+            return;
+        }
+        /* ------------------------------------------ */
+
         if (guessed[guess-'a']) { 
             printf("You already guessed '%c'!\n", guess); 
             continue; 
@@ -622,7 +638,7 @@ void sudoku_menu(void) {
     }
 }
 
-void showsuduko(void) {
+void showChatbot(void) {
     showCursor();
     
     // Initialize the given array with original puzzle state
@@ -682,7 +698,7 @@ int main(void) {
                 if      (selected == 0) showTypeWriter();
                 else if (selected == 1) showFlash();
                 else if (selected == 2) showGuessingGame();
-                else if (selected == 3) showsuduko();
+                else if (selected == 3) showChatbot();
                 else running = 0;
                 break;
         }
