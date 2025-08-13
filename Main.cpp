@@ -21,6 +21,7 @@
 #define MAX_LEN   200
 #define SUDOKU_SIZE 9
 #define MAX_MISTAKES 10
+#define ESC_KEY 27
 
 // ===== Data types =====
 typedef struct {
@@ -71,6 +72,8 @@ void displayHeader(void);
 void displayMenuMain(int selected);
 void displayHeaderFlash(void);
 void displayMenuFlash(int selected);
+void showExitMessage(void);
+int checkEscapeKey(void);
 
 void showTypeWriter(void);
 void showFlash(void);
@@ -131,6 +134,30 @@ void showCursor(void) {
     SetConsoleCursorInfo(h, &info);
 }
 
+void showExitMessage(void) {
+    clearScreen();
+    printf(ANSI_BOLD ANSI_GREEN "===============================================================================\n");
+    printf("                          Thanks for using our system!                         \n");
+    printf("===============================================================================\n" ANSI_RESET);
+    printf(ANSI_CYAN "Hope you enjoyed learning with our educational tools!\n" ANSI_RESET);
+    printf(ANSI_YELLOW "Press any key to exit...\n" ANSI_RESET);
+    _getch();
+}
+
+int checkEscapeKey(void) {
+    if (_kbhit()) {
+        int key = _getch();
+        if (key == ESC_KEY) {
+            printf(ANSI_YELLOW "\n\nExiting to main menu... (ESC pressed)\n" ANSI_RESET);
+            Sleep(1000); // Brief pause to show message
+            return 1;
+        }
+        // Put the key back if it wasn't ESC (this is a simplification)
+        return 0;
+    }
+    return 0;
+}
+
 // ===== Menus & headers =====
 void displayHeader(void) {
     printf(ANSI_BOLD ANSI_MAGENTA "              Education Reimagined              \n" ANSI_RESET);
@@ -175,25 +202,73 @@ void showAddCard(void) {
     showCursor();
     clearScreen();
     printf(ANSI_BOLD ANSI_CYAN "=== ADD NEW FLASH CARD ===\n\n" ANSI_RESET);
+    printf(ANSI_GRAY "(Press ESC at any time to cancel and return to menu)\n\n" ANSI_RESET);
+    
     if (totalCards >= MAX_CARDS) {
         printf(ANSI_RED "Flash card limit reached! (%d/%d)\n\n" ANSI_RESET, totalCards, MAX_CARDS);
         printf("Press any key to return to menu..."); _getch(); hideCursor(); return;
     }
+    
     printf("Enter your question:\n" ANSI_CYAN "> " ANSI_RESET);
-    fgets(deck[totalCards].question, MAX_LEN, stdin);
-    deck[totalCards].question[strcspn(deck[totalCards].question, "\n")] = '\0';
-    if (deck[totalCards].question[0] == '\0') { 
+    
+    // Enhanced input with ESC check
+    char buffer[MAX_LEN];
+    int i = 0;
+    while (i < MAX_LEN - 1) {
+        if (_kbhit()) {
+            int ch = _getch();
+            if (ch == ESC_KEY) {
+                printf(ANSI_YELLOW "\n\nOperation cancelled!\n" ANSI_RESET);
+                printf("Press any key to return to menu..."); _getch(); hideCursor(); return;
+            } else if (ch == 13) { // Enter
+                buffer[i] = '\0';
+                printf("\n");
+                break;
+            } else if (ch == 8 && i > 0) { // Backspace
+                i--;
+                printf("\b \b");
+            } else if (ch >= 32 && ch <= 126) { // Printable characters
+                buffer[i++] = ch;
+                printf("%c", ch);
+            }
+        }
+    }
+    
+    if (buffer[0] == '\0') { 
         printf(ANSI_RED "\nQuestion cannot be empty!\n" ANSI_RESET); 
         printf("Press any key to continue..."); _getch(); hideCursor(); return; 
     }
+    strcpy(deck[totalCards].question, buffer);
 
     printf("\nEnter the answer:\n" ANSI_CYAN "> " ANSI_RESET);
-    fgets(deck[totalCards].answer, MAX_LEN, stdin);
-    deck[totalCards].answer[strcspn(deck[totalCards].answer, "\n")] = '\0';
-    if (deck[totalCards].answer[0] == '\0') { 
+    
+    // Enhanced input with ESC check for answer
+    i = 0;
+    while (i < MAX_LEN - 1) {
+        if (_kbhit()) {
+            int ch = _getch();
+            if (ch == ESC_KEY) {
+                printf(ANSI_YELLOW "\n\nOperation cancelled!\n" ANSI_RESET);
+                printf("Press any key to return to menu..."); _getch(); hideCursor(); return;
+            } else if (ch == 13) { // Enter
+                buffer[i] = '\0';
+                printf("\n");
+                break;
+            } else if (ch == 8 && i > 0) { // Backspace
+                i--;
+                printf("\b \b");
+            } else if (ch >= 32 && ch <= 126) { // Printable characters
+                buffer[i++] = ch;
+                printf("%c", ch);
+            }
+        }
+    }
+    
+    if (buffer[0] == '\0') { 
         printf(ANSI_RED "\nAnswer cannot be empty!\n" ANSI_RESET); 
         printf("Press any key to continue..."); _getch(); hideCursor(); return; 
     }
+    strcpy(deck[totalCards].answer, buffer);
 
     totalCards++;
     printf(ANSI_GREEN "\n✓ Card added successfully!\n\n" ANSI_RESET);
@@ -203,16 +278,26 @@ void showAddCard(void) {
 void showViewCards(void) {
     clearScreen();
     printf(ANSI_BOLD ANSI_BLUE "=== YOUR FLASH CARDS ===\n\n" ANSI_RESET);
+    printf(ANSI_GRAY "(Press ESC at any time to return to menu)\n\n" ANSI_RESET);
+    
     if (totalCards == 0) {
         printf(ANSI_YELLOW "No flash cards available yet!\n\n" ANSI_RESET);
         printf("Press any key to return to menu..."); _getch(); return;
     }
+    
     for (int i = 0; i < totalCards; ++i) {
+        // Check for ESC key during card display
+        if (checkEscapeKey()) return;
+        
         printf(ANSI_MAGENTA "Card #%d:\n" ANSI_RESET, i + 1);
         printf(ANSI_WHITE   "Q: %s\n" ANSI_RESET, deck[i].question);
         printf(ANSI_GREEN   "A: %s\n\n" ANSI_RESET, deck[i].answer);
+        
         if ((i + 1) % 5 == 0 && i + 1 < totalCards) { 
-            printf("Press any key to see more..."); _getch(); printf("\n"); 
+            printf("Press any key to see more (or ESC to exit)..."); 
+            int key = _getch(); 
+            if (key == ESC_KEY) return;
+            printf("\n"); 
         }
     }
     printf("Press any key to return to menu..."); _getch();
@@ -222,6 +307,8 @@ void showQuiz(void) {
     showCursor();
     clearScreen();
     printf(ANSI_BOLD ANSI_MAGENTA "=== INTERACTIVE QUIZ ===\n\n" ANSI_RESET);
+    printf(ANSI_GRAY "(Press ESC at any time to exit quiz)\n\n" ANSI_RESET);
+    
     if (totalCards == 0) { 
         printf(ANSI_YELLOW "No flash cards to quiz on!\n\n" ANSI_RESET); 
         printf("Press any key to continue..."); _getch(); hideCursor(); return; 
@@ -229,11 +316,20 @@ void showQuiz(void) {
 
     int score = 0; 
     char userAnswer[MAX_LEN];
+    
     for (int i = 0; i < totalCards; ++i) {
         printf(ANSI_YELLOW "Question %d of %d:\n" ANSI_RESET "%s\n\n", i + 1, totalCards, deck[i].question);
-        printf("Your answer: ");
+        printf("Your answer (or type 'ESC' to exit): ");
+        
         fgets(userAnswer, MAX_LEN, stdin);
         userAnswer[strcspn(userAnswer, "\n")] = '\0';
+        
+        // Check if user typed 'ESC' to exit
+        if (strcmp(userAnswer, "ESC") == 0 || strcmp(userAnswer, "esc") == 0) {
+            printf(ANSI_YELLOW "\nQuiz cancelled!\n" ANSI_RESET);
+            printf("Press any key to return to menu..."); _getch(); hideCursor(); return;
+        }
+        
         if (strcmp(userAnswer, deck[i].answer) == 0) { 
             printf(ANSI_GREEN "✓ Correct!\n\n" ANSI_RESET); 
             score++; 
@@ -241,8 +337,15 @@ void showQuiz(void) {
         else { 
             printf(ANSI_RED "✗ Wrong!\n" ANSI_RESET ANSI_GREEN "Correct answer: %s\n\n" ANSI_RESET, deck[i].answer); 
         }
+        
         if (i < totalCards - 1) { 
-            printf("Press any key for next question..."); _getch(); printf("\n"); 
+            printf("Press any key for next question (or ESC to exit)..."); 
+            int key = _getch(); 
+            if (key == ESC_KEY) {
+                printf(ANSI_YELLOW "\n\nQuiz cancelled!\n" ANSI_RESET);
+                printf("Press any key to return to menu..."); _getch(); hideCursor(); return;
+            }
+            printf("\n"); 
         }
     }
 
@@ -255,6 +358,8 @@ void showQuiz(void) {
 void showStats(void) {
     clearScreen();
     printf(ANSI_BOLD ANSI_GREEN "=== LEARNING STATISTICS ===\n\n" ANSI_RESET);
+    printf(ANSI_GRAY "(Press ESC to return to menu)\n\n" ANSI_RESET);
+    
     if (totalCards == 0) { 
         printf(ANSI_YELLOW "No statistics available yet!\n\n" ANSI_RESET); 
         printf("Press any key to return..."); _getch(); return; 
@@ -274,7 +379,8 @@ void showStats(void) {
     printf("Progress Bar: [");
     int bars = (totalCards * 25) / MAX_CARDS;
     for (int i = 0; i < 25; ++i) putchar(i < bars ? '#' : '-');
-    printf("]\n\nPress any key to return to menu..."); _getch();
+    printf("]\n\nPress any key to return to menu (or ESC)..."); 
+    _getch();
 }
 
 // ===== Typing test =====
@@ -305,7 +411,7 @@ void draw_text(char** words, int num_words, int current_word_index, const char* 
         }
     }
     printf("\n\n" ANSI_BOLD "WPM: %.2f | Accuracy: %.2f%% | Time: %ds" ANSI_RESET "\n\n", wpm, accuracy, time_left);
-    printf(ANSI_BOLD "Start typing..." ANSI_RESET);
+    printf(ANSI_BOLD "Start typing... " ANSI_GRAY "(Press ESC to exit)" ANSI_RESET);
 }
 
 void showTypeWriter(void) {
@@ -341,7 +447,11 @@ void showTypeWriter(void) {
         if (_kbhit()) {
             if (!started) { start_time = clock(); started = 1; }
             char ch = _getch();
-            if (ch == 27) break; // ESC to quit
+            if (ch == ESC_KEY) {
+                printf(ANSI_YELLOW "\n\nTyping test cancelled!\n" ANSI_RESET);
+                Sleep(1500);
+                break;
+            }
             if (ch == ' ' && typed_word_len > 0) {
                 if (current_word_index < num_test_words) {
                     int word_len = (int)strlen(test_words[current_word_index]);
@@ -416,12 +526,13 @@ GameData loadGameData(void) {
 char getSingleChar(void) {
     char input[100];
     while (1) {
-        printf("Enter a letter (or type 'exit' to quit): ");
+        printf("Enter a letter (or type 'exit'/'ESC' to quit): ");
         if (fgets(input, sizeof(input), stdin)) {
             input[strcspn(input, "\n")] = '\0';
             
-            // Check for exit command
-            if (strcmp(input, "exit") == 0 || strcmp(input, "EXIT") == 0) {
+            // Check for exit commands
+            if (strcmp(input, "exit") == 0 || strcmp(input, "EXIT") == 0 || 
+                strcmp(input, "ESC") == 0 || strcmp(input, "esc") == 0) {
                 return '0'; // Special return value for exit
             }
             
@@ -430,7 +541,7 @@ char getSingleChar(void) {
                 if (ch >= 'A' && ch <= 'Z') ch = (char)(ch + 32); 
                 return ch;
             }
-            printf("Invalid input! Please enter a single letter or 'exit' to quit.\n");
+            printf("Invalid input! Please enter a single letter or 'exit'/'ESC' to quit.\n");
         }
     }
 }
@@ -438,6 +549,7 @@ char getSingleChar(void) {
 void playGuessingGame(void) {
     clearScreen();
     printf(ANSI_BOLD ANSI_CYAN "=== WORD GUESSING GAME ===\n\n" ANSI_RESET);
+    printf(ANSI_GRAY "(Type 'ESC' or 'exit' at any time to return to main menu)\n\n" ANSI_RESET);
 
     GameData game = loadGameData();
     int wordLen = (int)strlen(game.target);
@@ -478,16 +590,8 @@ void playGuessingGame(void) {
         printf("\n\n");
 
         char guess = getSingleChar();
-
-        /* ---- FIX: handle exit command cleanly ---- */
-        if (guess == '0') {
-            printf("\nExiting to menu...\n");
-               printf("Enter a any key to continue.....");
-            _getch();
-            return;
-        }
-        /* ------------------------------------------ */
-
+        if (guess == '0') return; // User chose to exit
+        
         if (guessed[guess-'a']) { 
             printf("You already guessed '%c'!\n", guess); 
             continue; 
@@ -539,7 +643,8 @@ void print_sudoku_header(void) {
 
 void print_sudoku_board(void) {
     print_sudoku_header();
-    printf("\nSudoku Board (enter row col num  1..9):\n\n");
+    printf("\nSudoku Board (enter row col num  1..9, or '0 0 0' to exit):\n");
+    printf(ANSI_GRAY "(Press ESC during input to return to menu)\n\n" ANSI_RESET);
 
     for (int i = 0; i < SUDOKU_SIZE; i++) {
         if (i % 3 == 0) printf("+-------+-------+-------+\n");
@@ -567,21 +672,47 @@ void flush_line(void) {
 
 void play_sudoku_game(void) {
     int mistakes = 0;
+    printf(ANSI_YELLOW "Starting Sudoku game! You can exit anytime by entering '0 0 0' or pressing ESC.\n\n" ANSI_RESET);
 
     while (!is_sudoku_complete()) {
         print_sudoku_board();
 
         printf("\nEnter row col num (1-9). Enter 0 0 0 to quit.\n> ");
 
+        // Enhanced input with ESC detection
+        char input_line[100];
+        int input_index = 0;
+        
+        // Read input character by character to detect ESC
+        while (input_index < sizeof(input_line) - 1) {
+            if (_kbhit()) {
+                int ch = _getch();
+                if (ch == ESC_KEY) {
+                    printf(ANSI_YELLOW "\n\nReturning to menu... (ESC pressed)\n" ANSI_RESET);
+                    Sleep(1000);
+                    return;
+                } else if (ch == 13) { // Enter
+                    input_line[input_index] = '\0';
+                    printf("\n");
+                    break;
+                } else if (ch == 8 && input_index > 0) { // Backspace
+                    input_index--;
+                    printf("\b \b");
+                } else if (ch >= 32 && ch <= 126) { // Printable characters
+                    input_line[input_index++] = ch;
+                    printf("%c", ch);
+                }
+            }
+        }
+
         int r, c, n;
-        int read = scanf("%d %d %d", &r, &c, &n);
-        if (read != 3) {
-            printf("Invalid input. Please enter three numbers.\n");
-            flush_line();
+        if (sscanf(input_line, "%d %d %d", &r, &c, &n) != 3) {
+            printf("Invalid input. Please enter three numbers (row col num) or 0 0 0 to quit.\n");
             continue;
         }
+        
         if (r == 0 && c == 0 && n == 0) {
-            printf("Goodbye!\n");
+            printf("Returning to menu...\n");
             return;
         }
 
@@ -600,40 +731,65 @@ void play_sudoku_game(void) {
 
         if (solution[r][c] == n) {
             puzzle[r][c] = n;
-            printf("✓ Correct!\n");
+            printf(ANSI_GREEN "✓ Correct!\n" ANSI_RESET);
         } else {
             mistakes++;
-            printf("Incorrect. Mistakes: %d/%d\n", mistakes, MAX_MISTAKES);
+            printf(ANSI_RED "✗ Incorrect. Mistakes: %d/%d\n" ANSI_RESET, mistakes, MAX_MISTAKES);
             if (mistakes >= MAX_MISTAKES) {
                 print_sudoku_board();
-                printf("\nYou made %d mistakes. You lose.\n", MAX_MISTAKES);
+                printf(ANSI_RED "\nYou made %d mistakes. Game over!\n" ANSI_RESET, MAX_MISTAKES);
+                printf("The correct solution will be displayed:\n\n");
+                
+                // Show solution
+                for (int i = 0; i < SUDOKU_SIZE; i++) {
+                    if (i % 3 == 0) printf("+-------+-------+-------+\n");
+                    for (int j = 0; j < SUDOKU_SIZE; j++) {
+                        if (j % 3 == 0) printf("| ");
+                        printf("%d ", solution[i][j]);
+                    }
+                    printf("|\n");
+                }
+                printf("+-------+-------+-------+\n");
+                printf("\nPress any key to return to menu..."); _getch();
                 return;
             }
         }
     }
 
     print_sudoku_board();
-    printf("\nCongratulations! You solved the Sudoku!\n");
+    printf(ANSI_BOLD ANSI_GREEN "\n🎉 Congratulations! You solved the Sudoku! 🎉\n" ANSI_RESET);
+    printf("Press any key to return to menu..."); _getch();
 }
 
 void sudoku_menu(void) {
-    int choice;
+    int selected = 0;
+    const int numOptions = 2;
+    
     while (1) {
+        clearScreen();
         print_sudoku_header();
-        printf("\n1. Play Game\n");
-        printf("2. Exit\n");
-        printf("Enter choice: ");
-        if (scanf("%d", &choice) != 1) {
-            flush_line();
-            continue;
+        printf(ANSI_GRAY "\n(Press ESC at any time to return to main menu)\n\n" ANSI_RESET);
+        
+        const char* options[] = {"Play Game", "Back to Main Menu"};
+        for (int i = 0; i < numOptions; ++i) {
+            if (i == selected) printf(ANSI_GREEN "-> " ANSI_WHITE "%s" ANSI_RESET "\n", options[i]);
+            else               printf(ANSI_CYAN  "   %s" ANSI_RESET "\n", options[i]);
         }
-        if (choice == 1) {
-            play_sudoku_game();
-        } else if (choice == 2) {
-            printf("Returning to main menu...\n");
-            return;
-        } else {
-            printf("Invalid choice. Try again.\n");
+        
+        printf(ANSI_YELLOW "\nUse arrows or WASD to navigate, ENTER to select, ESC to go back\n" ANSI_RESET);
+        
+        int key = _getch();
+        switch (key) {
+            case 72: case 'w': case 'W': selected = (selected - 1 + numOptions) % numOptions; break; // up
+            case 80: case 's': case 'S': selected = (selected + 1) % numOptions; break; // down
+            case ESC_KEY: return; // ESC
+            case 13: // Enter
+                if (selected == 0) {
+                    play_sudoku_game();
+                } else {
+                    return;
+                }
+                break;
         }
     }
 }
@@ -655,16 +811,18 @@ void showFlash(void) {
     const int numOptions = 5; 
     int running = 1; 
     hideCursor();
+    
     while (running) {
         clearScreen();
         displayHeaderFlash();
         displayMenuFlash(selected);
         printf("\n" ANSI_YELLOW "Use arrows or WASD to navigate, ENTER to select, ESC to go back\n" ANSI_RESET);
+        
         int key = _getch();
         switch (key) {
             case 72: case 'w': case 'W': selected = (selected - 1 + numOptions) % numOptions; break; // up
             case 80: case 's': case 'S': selected = (selected + 1) % numOptions; break; // down
-            case 27: running = 0; break; // ESC
+            case ESC_KEY: running = 0; break; // ESC
             case 13: // Enter
                 if      (selected == 0) showAddCard();
                 else if (selected == 1) showViewCards();
@@ -684,16 +842,18 @@ int main(void) {
     int selected = 0; 
     const int numOptions = 5; 
     int running = 1;
+    
     while (running) {
         clearScreen();
         displayHeader();
         displayMenuMain(selected);
         printf("\n" ANSI_YELLOW "Use arrows or WASD to navigate, ENTER to select, ESC to exit\n" ANSI_RESET);
+        
         int key = _getch();
         switch (key) {
             case 72: case 'w': case 'W': selected = (selected - 1 + numOptions) % numOptions; break;
             case 80: case 's': case 'S': selected = (selected + 1) % numOptions; break;
-            case 27: running = 0; break;
+            case ESC_KEY: running = 0; break;
             case 13:
                 if      (selected == 0) showTypeWriter();
                 else if (selected == 1) showFlash();
@@ -705,7 +865,6 @@ int main(void) {
     }
 
     showCursor();
-    clearScreen();
-    printf(ANSI_RED "Thanks for using our menu system!\n" ANSI_RESET);
+    showExitMessage();
     return 0;
 }
