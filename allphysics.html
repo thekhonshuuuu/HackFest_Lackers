@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>STEM Lab – Physics + Electricity + Digital Logic</title>
+<style>
+  :root{
+    --bg:#0f1116; --panel:#181c24; --panel2:#1e2330; --text:#e9edf1;
+    --muted:#a9b2c0; --border:#293142; --accent:#00c2a8; --warn:#ffb454;
+    --glow:#00f0d1;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--panel)}
+  .brand{display:flex;gap:10px;align-items:center;font-weight:800}
+  .logo{width:24px;height:24px;border-radius:8px;background:conic-gradient(from 180deg,#00c2a8,#22a3ff,#8a76ff,#00c2a8)}
+  .wrap{max-width:1100px;margin:0 auto;padding:16px;display:grid;gap:16px}
+  .tabs{display:flex;flex-wrap:wrap;gap:8px}
+  .tabs button{
+    border:1px solid var(--border); background:var(--panel2); color:var(--text);
+    padding:8px 10px; border-radius:10px; cursor:pointer; transition:.15s;
+  }
+  .tabs button.active{background:var(--accent); color:#06231e; box-shadow:0 0 0 3px rgba(0,194,168,.2)}
+  .grid{display:grid;grid-template-columns:360px 1fr;gap:16px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:12px; overflow:hidden}
+  .row{display:grid;grid-template-columns:1fr 120px;align-items:center;gap:8px;margin:6px 0}
+  label{color:var(--muted)}
+  input[type=number],select{
+    width:100%;padding:7px;border-radius:10px;border:1px solid var(--border);
+    background:var(--panel2);color:var(--text)
+  }
+  .slider{
+    display:grid; grid-template-columns: 1fr 70px; gap:8px; align-items:center; margin:8px 0
+  }
+  input[type=range]{width:100%}
+  .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  button.primary{background:var(--accent);border:none;color:#06231e;padding:8px 12px;border-radius:10px;font-weight:700;cursor:pointer}
+  button.secondary{background:#2a3346;border:none;color:var(--text);padding:8px 12px;border-radius:10px;cursor:pointer}
+  .out{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px}
+  .metric{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:8px}
+  .metric .k{color:var(--muted);font-size:12px}
+  .metric .v{font-weight:700}
+  canvas{width:100%;height:540px;background:#0e121a;border:1px solid var(--border);border-radius:14px}
+  .foot{color:var(--muted);font-size:12px}
+  .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;background:#2a3346;border:1px solid var(--border);cursor:pointer;user-select:none}
+  .dot{width:12px;height:12px;border-radius:50%}
+  .dot.on{background:var(--glow);box-shadow:0 0 12px var(--glow)}
+  .dot.off{background:#4b556a}
+  .panelTitle{font-weight:800;margin:6px 0 10px 0; color:#dfe6f0}
+  .sideGroup{margin:8px 0; padding:8px; border:1px dashed #2c3448; border-radius:10px}
+  @media (max-width: 980px){ .grid{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><div class="logo"></div> STEM Lab – Physics + Electricity + Logic</div>
+  <div style="color:var(--muted)">Space = pause/resume • R = reset current simulation</div>
+</header>
+
+<div class="wrap">
+  <div class="tabs" id="tabs"></div>
+  <div class="grid">
+    <section class="card" id="controls"></section>
+    <section class="card"><canvas id="cv" width="940" height="540"></canvas></section>
+  </div>
+</div>
+
+<script>
+/* ========= Core framework ========= */
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const controls = document.getElementById('controls');
+const tabs = document.getElementById('tabs');
+
+const Sims = []; // registry
+let current=null, running=false, lastT=0;
+
+function register(sim){ Sims.push(sim); }
+function switchTo(id){
+  const s = Sims.find(x=>x.id===id); if(!s) return;
+  current=s; controls.innerHTML=''; s.init(controls);
+  tabs.querySelectorAll('button').forEach(b=>b.classList.toggle('active', b.dataset.id===id));
+  reset();
+}
+function reset(){ running=false; lastT=0; current.reset(); }
+function toggle(){ running=!running; }
+
+function clearCanvas(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  // grid
+  ctx.strokeStyle="#263044"; ctx.lineWidth=1; ctx.beginPath();
+  for(let x=10;x<cv.width;x+=50){ ctx.moveTo(x,10); ctx.lineTo(x,cv.height-10); }
+  for(let y=10;y<cv.height;y+=50){ ctx.moveTo(10,y); ctx.lineTo(cv.width-10,y); }
+  ctx.stroke();
+}
+function loop(ts){
+  if(!lastT) lastT=ts;
+  const dt = Math.min(0.033,(ts-lastT)/1000); lastT=ts;
+  // physics step: run when running OR when sim wants idle animation (dc/logic)
+  if(running || current?.wantsIdle) current.step(dt, running);
+  clearCanvas(); current.draw(ctx);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+document.addEventListener('keydown', e=>{
+  if(e.code==='Space'){ e.preventDefault(); toggle(); }
+  if(e.key==='r'||e.key==='R'){ reset(); }
+  if(current && current.shortcuts) current.shortcuts(e);
+});
+
+/* ========= UI helpers ========= */
+function uiNumber(parent, label, value, step, min, max){
+  const row=document.createElement('div'); row.className='row';
+  const lab=document.createElement('label'); lab.textContent=label;
+  const inp=document.createElement('input'); inp.type='number'; inp.value=value;
+  if(step!=null) inp.step=step; if(min!=null) inp.min=min; if(max!=null) inp.max=max;
+  row.append(lab, inp); parent.appendChild(row); return inp;
+}
+function uiSlider(parent, label, value, min, max, step=1){
+  const wrap=document.createElement('div'); wrap.className='slider';
+  const lab=document.createElement('label'); lab.textContent=label;
+  const range=document.createElement('input'); range.type='range'; range.min=min; range.max=max; range.step=step; range.value=value;
+  const num=document.createElement('input'); num.type='number'; num.min=min; num.max=max; num.step=step; num.value=value;
+  range.addEventListener('input',()=>{num.value=range.value; parent.dispatchEvent(new Event('input'));});
+  num.addEventListener('input',()=>{range.value=num.value; parent.dispatchEvent(new Event('input'));});
+  wrap.append(lab, range, num); parent.appendChild(wrap);
+  return {range,num,get value(){return Number(range.value)}, set value(v){range.value=v; num.value=v;}};
+}
+function uiSelect(parent, label, options, value){
+  const row=document.createElement('div'); row.className='row';
+  const lab=document.createElement('label'); lab.textContent=label;
+  const sel=document.createElement('select'); options.forEach(o=>{const op=document.createElement('option'); op.value=o; op.textContent=o; sel.appendChild(op)});
+  sel.value=value;
+  row.append(lab, sel); parent.appendChild(row); return sel;
+}
+function uiButtons(parent, ...defs){
+  const div=document.createElement('div'); div.className='btns'; parent.appendChild(div);
+  defs.forEach(d=>{ const b=document.createElement('button'); b.textContent=d.text; b.className=d.kind||'primary'; b.onclick=d.on; div.appendChild(b); });
+  return div;
+}
+function metricGrid(parent, keys){
+  const wrap=document.createElement('div'); wrap.className='out'; const map={};
+  keys.forEach(k=>{ const m=document.createElement('div'); m.className='metric';
+    const a=document.createElement('div'); a.className='k'; a.textContent=k;
+    const b=document.createElement('div'); b.className='v'; b.textContent='—';
+    m.append(a,b); wrap.appendChild(m); map[k]=b; });
+  parent.appendChild(wrap); return map;
+}
+
+/* ========= 1) Projectile ========= */
+register({
+  id:'proj', name:'Projectile',
+  init(p){
+    this.v0=uiNumber(p,'Initial speed (m/s)',30,0.1,0,300);
+    this.ang=uiNumber(p,'Launch angle (deg)',45,0.1,-5,89);
+    this.h0=uiNumber(p,'Start height (m)',0,0.1,0,100);
+    this.g =uiNumber(p,'Gravity g (m/s^2)',9.81,0.01,0.1,30);
+    // drag
+    const dragWrap=document.createElement('div'); dragWrap.className='row';
+    const lab=document.createElement('label'); lab.textContent='Air resistance (linear k)';
+    const box=document.createElement('div'); box.className='inline';
+    this.dragOn=document.createElement('input'); this.dragOn.type='checkbox';
+    this.kInp=document.createElement('input'); this.kInp.type='number'; this.kInp.value='0.12'; this.kInp.step='0.01'; this.kInp.min='0'; this.kInp.style.width='80px';
+    box.append(this.dragOn, document.createTextNode('k='), this.kInp); dragWrap.append(lab,box); p.appendChild(dragWrap);
+    // options
+    const opt=document.createElement('div'); opt.className='row';
+    const ol=document.createElement('label'); ol.textContent='Options'; const wrap=document.createElement('div'); wrap.className='inline';
+    this.trail=document.createElement('input'); this.trail.type='checkbox'; this.trail.checked=true;
+    this.fit=document.createElement('input'); this.fit.type='checkbox'; this.fit.checked=true;
+    wrap.append(this.trail, document.createTextNode('trail'), this.fit, document.createTextNode('fit'));
+    opt.append(ol, wrap); p.appendChild(opt);
+    uiButtons(p,{text:'Launch / Pause',on:()=>{ if(running){toggle();}else{this.launch(); toggle();} }},{text:'Reset',kind:'secondary',on:()=>{this.reset();}});
+    this.out=metricGrid(p,['Time of flight (s)','Range (m)','Max height (m)','Apex (x,y) m']);
+    this.reset();
+  },
+  reset(){ this.t=0; this.path=[]; this.p=null; this.px=6; this.origin={x:10,y:10}; },
+  toRad(d){return d*Math.PI/180},
+  closed(v0,th,y0,g){const vx=v0*Math.cos(th), vy=v0*Math.sin(th); const t=(vy+Math.sqrt(vy*vy+2*g*y0))/g; const R=vx*t; const H=y0+(vy*vy)/(2*g); return {t,R,H,xA:vx*(vy/g)}},
+  autoFit(v0,th,y0,g){const {R,H}=this.closed(v0,th,y0,g); const sx=(cv.width-20)/Math.max(R+10,1), sy=(cv.height-20)/Math.max(Math.max(H,y0)+10,1); this.px=Math.max(2,Math.min(sx,sy));},
+  X(m){return this.origin.x+m*this.px}, Y(m){return cv.height-(this.origin.y+m*this.px)},
+  step(dt, run){
+    if(!this.p || !run) return;
+    const g=Number(this.g.value);
+    if(this.dragOn.checked){ const k=Math.max(0, Number(this.kInp.value));
+      this.p.vx += (-k*this.p.vx)*dt; this.p.vy += (-g - k*this.p.vy)*dt;
+      this.p.x  += this.p.vx*dt; this.p.y  += this.p.vy*dt;
+    }else{
+      this.p.x=this.p.vx0*this.t; this.p.y=this.p.y0+this.p.vy0*this.t-0.5*g*this.t*this.t;
+    }
+    if(this.p.y<0){this.p.y=0; toggle();} // stop
+    if(this.path.length===0 || this.t - this.path[this.path.length-1].t > 0.02) this.path.push({x:this.p.x,y:this.p.y,t:this.t});
+    this.t+=dt;
+  },
+  draw(){
+    // axes
+    ctx.strokeStyle="#3b4660"; ctx.lineWidth=2; ctx.beginPath();
+    ctx.moveTo(this.origin.x, this.Y(0)); ctx.lineTo(cv.width-10, this.Y(0));
+    ctx.moveTo(this.origin.x, 10); ctx.lineTo(this.origin.x, cv.height-10); ctx.stroke();
+    // trail
+    if(this.trail.checked && this.path.length>1){
+      ctx.strokeStyle="#00c2a8"; ctx.lineWidth=2; ctx.beginPath();
+      ctx.moveTo(this.X(this.path[0].x), this.Y(this.path[0].y));
+      for(let i=1;i<this.path.length;i++) ctx.lineTo(this.X(this.path[i].x), this.Y(this.path[i].y));
+      ctx.stroke();
+    }
+    if(this.p){ ctx.fillStyle="#e6f7f4"; ctx.beginPath(); ctx.arc(this.X(this.p.x), this.Y(this.p.y), 5, 0, Math.PI*2); ctx.fill(); }
+  },
+  launch(){
+    const v0=Number(this.v0.value), th=this.toRad(Number(this.ang.value)), y0=Number(this.h0.value), g=Number(this.g.value);
+    if(this.fit.checked) this.autoFit(v0,th,y0,g);
+    this.t=0; this.path=[]; const vx0=v0*Math.cos(th), vy0=v0*Math.sin(th);
+    this.p={x:0,y:y0,vx0,vy0,vx:vx0,vy:vy0,y0};
+    const cf=this.closed(v0,th,y0,g);
+    this.out['Time of flight (s)'].textContent=cf.t.toFixed(2);
+    this.out['Range (m)'].textContent=cf.R.toFixed(2);
+    this.out['Max height (m)'].textContent=cf.H.toFixed(2);
+    this.out['Apex (x,y) m'].textContent=`${cf.xA.toFixed(2)}, ${cf.H.toFixed(2)}`;
+  }
+});
+
+/* ========= 2) Pendulum ========= */
+register({
+  id:'pend', name:'Pendulum',
+  init(p){
+    this.L=uiNumber(p,'Length L (m)',1.2,0.01,0.2,5);
+    this.theta0=uiNumber(p,'Initial angle (deg)',25,0.1,-80,80);
+    this.damp=uiNumber(p,'Damping b (s^-1)',0.02,0.01,0,1);
+    this.g=uiNumber(p,'Gravity g (m/s^2)',9.81,0.01,0.1,30);
+    uiButtons(p,{text:'Run / Pause',on:()=>toggle()},{text:'Reset',kind:'secondary',on:()=>this.reset()});
+    this.out=metricGrid(p,['Period (s)','Max angle (deg)']); this.reset();
+  },
+  reset(){ this.t=0; this.theta=Number(this.theta0.value)*Math.PI/180; this.omega=0; },
+  step(dt, run){
+    if(!run) return;
+    const b=Number(this.damp.value), g=Number(this.g.value), L=Number(this.L.value);
+    const a=-b*this.omega-(g/L)*Math.sin(this.theta); this.omega+=a*dt; this.theta+=this.omega*dt; this.t+=dt;
+  },
+  draw(){
+    const cx=cv.width/2, cy=120, Lpix=Number(this.L.value)*180;
+    const x=cx+Lpix*Math.sin(this.theta), y=cy+Lpix*Math.cos(this.theta);
+    ctx.strokeStyle="#3b4660"; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(x,y); ctx.stroke();
+    ctx.fillStyle="#00c2a8"; ctx.beginPath(); ctx.arc(x,y,12,0,Math.PI*2); ctx.fill();
+    const g=Number(this.g.value), L=Number(this.L.value), T=2*Math.PI*Math.sqrt(L/g);
+    this.out['Period (s)'].textContent=T.toFixed(2);
+    this.out['Max angle (deg)'].textContent=(Math.abs(this.theta)*180/Math.PI).toFixed(1);
+  }
+});
+
+/* ========= 3) 1-D Collisions ========= */
+register({
+  id:'collide', name:'1-D Collisions',
+  init(p){
+    this.m1=uiNumber(p,'Mass m1 (kg)',1,0.1,0.1,10);
+    this.v1=uiNumber(p,'Velocity v1 (m/s)',2,0.1,-10,10);
+    this.m2=uiNumber(p,'Mass m2 (kg)',1.5,0.1,0.1,10);
+    this.v2=uiNumber(p,'Velocity v2 (m/s)',-1,0.1,-10,10);
+    this.e =uiNumber(p,'Restitution e (0..1)',1,0.01,0,1);
+    uiButtons(p,{text:'Run / Pause',on:()=>toggle()},{text:'Reset',kind:'secondary',on:()=>this.reset()});
+    this.out=metricGrid(p,['p before','p after','KE before','KE after']); this.reset();
+  },
+  reset(){ this.x1=140; this.x2=cv.width-140; this.v1v=Number(this.v1.value); this.v2v=Number(this.v2.value); },
+  step(dt, run){
+    if(!run) return;
+    this.x1 += this.v1v*60*dt; this.x2 += this.v2v*60*dt;
+    if(this.x2 - this.x1 < 80){
+      const m1=Number(this.m1.value), m2=Number(this.m2.value), e=Number(this.e.value);
+      const u1=this.v1v, u2=this.v2v; const v1=(m1*u1+m2*u2 - m2*e*(u1-u2))/(m1+m2); const v2=v1+e*(u1-u2);
+      this.v1v=v1; this.v2v=v2; this.x1-=10; this.x2+=10;
+    }
+    if(this.x1<80){this.x1=80; this.v1v=-Number(this.e.value)*this.v1v;}
+    if(this.x2>cv.width-80){this.x2=cv.width-80; this.v2v=-Number(this.e.value)*this.v2v;}
+  },
+  draw(){
+    const y=cv.height/2; ctx.strokeStyle="#3b4660"; ctx.lineWidth=2; ctx.beginPath();
+    ctx.moveTo(60,y+28); ctx.lineTo(cv.width-60,y+28); ctx.stroke();
+    ctx.fillStyle="#00c2a8"; ctx.fillRect(this.x1-40,y-20,80,40);
+    ctx.fillStyle="#ffb454"; ctx.fillRect(this.x2-40,y-20,80,40);
+    const m1=Number(this.m1.value), m2=Number(this.m2.value);
+    const pB=m1*Number(this.v1.value)+m2*Number(this.v2.value), pA=m1*this.v1v+m2*this.v2v;
+    const keB=0.5*m1*Number(this.v1.value)**2 + 0.5*m2*Number(this.v2.value)**2;
+    const keA=0.5*m1*this.v1v**2 + 0.5*m2*this.v2v**2;
+    this.out['p before'].textContent=pB.toFixed(2);
+    this.out['p after'].textContent=pA.toFixed(2);
+    this.out['KE before'].textContent=keB.toFixed(2);
+    this.out['KE after'].textContent=keA.toFixed(2);
+  }
+});
+
+/* ========= 4) Optics (Lens) ========= */
+register({
+  id:'optics', name:'Optics (Lens)',
+  init(p){
+    this.f =uiNumber(p,'Focal length f (px)',120,1,40,300);
+    this.ox=uiNumber(p,'Object x left of lens (px)',180,1,60,400);
+    this.oh=uiNumber(p,'Object height (px)',80,1,20,200);
+    this.sx=uiNumber(p,'Screen x right (px)',220,1,80,500);
+    uiButtons(p,{text:'Update',on:()=>{}},{text:'Center',kind:'secondary',on:()=>{this.f.value=120;this.ox.value=180;this.oh.value=80;this.sx.value=220;}});
+    this.out=metricGrid(p,['Image distance (px)','Image height (px)','Magnification']); this.reset();
+  },
+  reset(){},
+  step(){},
+  draw(){
+    const midY=cv.height/2, midX=cv.width/2;
+    ctx.strokeStyle="#22a3ff"; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(midX,100); ctx.lineTo(midX,cv.height-100); ctx.stroke();
+    ctx.strokeStyle="#3b4660"; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(50,midY); ctx.lineTo(cv.width-50,midY); ctx.stroke();
+    const f=Number(this.f.value);
+    ctx.fillStyle="#a9b2c0"; ctx.fillRect(midX-f-2,midY-2,4,4); ctx.fillRect(midX+f-2,midY-2,4,4);
+    const objTip={x: midX-Number(this.ox.value), y: midY-Number(this.oh.value)}, objBase={x:objTip.x,y:midY};
+    ctx.strokeStyle="#00c2a8"; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(objBase.x,objBase.y); ctx.lineTo(objTip.x,objTip.y); ctx.stroke();
+    const do_ = midX - objBase.x; const di = 1/(1/f - 1/do_); const m = -di/do_;
+    const imgTip={x: midX+di, y: midY - m*Number(this.oh.value)}, imgBase={x: midX+di, y: midY};
+    ctx.strokeStyle="#ffb454"; ctx.lineWidth=3;
+    if(di>0){ ctx.beginPath(); ctx.moveTo(imgBase.x,imgBase.y); ctx.lineTo(imgTip.x,imgTip.y); ctx.stroke(); }
+    else{ ctx.setLineDash([8,6]); ctx.beginPath(); ctx.moveTo(imgBase.x,imgBase.y); ctx.lineTo(imgTip.x,imgTip.y); ctx.stroke(); ctx.setLineDash([]); }
+    // rays
+    ctx.strokeStyle="#a9b2c0"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(objTip.x,objTip.y); ctx.lineTo(midX,midY); ctx.lineTo(imgTip.x,imgTip.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(objTip.x,objTip.y); ctx.lineTo(midX,objTip.y); ctx.lineTo(imgTip.x,imgTip.y); ctx.stroke();
+    // screen
+    const sX=midX+Number(this.sx.value); ctx.strokeStyle="#888"; ctx.beginPath(); ctx.moveTo(sX,midY-160); ctx.lineTo(sX,midY+160); ctx.stroke();
+    this.out['Image distance (px)'].textContent=di.toFixed(1);
+    this.out['Image height (px)'].textContent=(m*Number(this.oh.value)).toFixed(1);
+    this.out['Magnification'].textContent=m.toFixed(2);
+  }
+});
+
+/* ========= 5) Ohm/DC – interactive & animated ========= */
+register({
+  id:'dc', name:'Ohm/DC',
+  wantsIdle:true, // animate even when not "running"
+  init(p){
+    const title=document.createElement('div'); title.className='panelTitle'; title.textContent='Ohm’s Law & DC Circuit';
+    p.appendChild(title);
+
+    this.vs = uiSlider(p,'Battery V (volts)',12,0,100,0.1);
+    this.mode = uiSelect(p,'Configuration',['Series','Parallel'],'Series');
+    this.nRes = uiSelect(p,'# of resistors',['1','2','3'],'2');
+    this.r1 = uiSlider(p,'R1 (ohms)',100,0.1,100000,0.1);
+    this.r2 = uiSlider(p,'R2 (ohms)',220,0.1,100000,0.1);
+    this.r3 = uiSlider(p,'R3 (ohms)',330,0.1,100000,0.1);
+
+    // live update
+    p.addEventListener('input', ()=>{}); // loop redraws continuously
+
+    this.out = metricGrid(p,['Req (Ω)','I total (A)','V drops (V)','Power total (W)']);
+    this.phase = 0; // for moving dots
+    this.reset();
+  },
+  reset(){},
+  step(dt){
+    // gentle dot speed proportional to current magnitude
+    const I = this.compute().I;
+    this.phase += Math.max(0.5, Math.min(6, Math.abs(I)*6)) * dt;
+  },
+  compute(){
+    const V=this.vs.value;
+    const n=Number(this.nRes.value);
+    const rs=[this.r1.value,this.r2.value,this.r3.value].slice(0,n);
+    const seriesReq = rs.reduce((a,b)=>a+b,0);
+    const parallelReq = 1/rs.reduce((acc,r)=>acc + 1/r, 0);
+    const Req = (this.mode.value==='Series') ? seriesReq : parallelReq;
+    const I = Req>0 ? V/Req : 0;
+    let Vdrops=[], P=0;
+    if(this.mode.value==='Series'){
+      Vdrops = rs.map(r => I*r);
+      P = V*I;
+    }else{
+      Vdrops = rs.map(_ => V);
+      P = rs.reduce((acc,r)=> acc + (V*V)/r, 0);
+    }
+    return {V,Req,I,Vdrops,P,rs,n};
+  },
+  draw(){
+    const {V,Req,I,Vdrops,P,rs,n} = this.compute();
+    // metrics
+    this.out['Req (Ω)'].textContent = Req.toFixed(2);
+    this.out['I total (A)'].textContent = I.toFixed(3);
+    this.out['V drops (V)'].textContent = Vdrops.map(v=>v.toFixed(2)).join(', ');
+    this.out['Power total (W)'].textContent = P.toFixed(2);
+
+    const midY=cv.height/2, left=120, right=cv.width-120;
+    const intensity = Math.min(1, Math.abs(I)*6);
+    const wireColor = `rgba(0, 240, 209, ${0.25+0.55*intensity})`;
+    const dotColor  = `rgba(0, 240, 209, ${0.55+0.4*intensity})`;
+
+    ctx.lineWidth=2.5;
+
+    // Battery (left)
+    ctx.strokeStyle="#a9b2c0";
+    ctx.beginPath();
+    ctx.moveTo(left-40, midY-18); ctx.lineTo(left-20, midY-18);
+    ctx.moveTo(left-40, midY+18); ctx.lineTo(left-10, midY+18);
+    ctx.stroke();
+    ctx.fillStyle="#a9b2c0"; ctx.fillText(`${V.toFixed(1)} V`, left-62, midY-26);
+
+    if(this.mode.value==='Series'){
+      // main wire
+      ctx.strokeStyle=wireColor;
+      ctx.beginPath(); ctx.moveTo(left-20, midY); ctx.lineTo(left, midY); ctx.stroke();
+
+      // draw resistors in a row
+      const span=(right-left)/n; let x=left;
+      for(let i=0;i<n;i++){
+        drawResistor(x+10, midY, span-20, `R${i+1}=${formatOhm(rs[i])}`, Vdrops[i]);
+        // animate current dots along each span
+        drawDotsAlong(x+10, midY, span-20, true);
+        x += span;
+      }
+      // right wire
+      ctx.strokeStyle=wireColor; ctx.beginPath(); ctx.moveTo(right, midY); ctx.lineTo(right+20, midY); ctx.stroke();
+      // return wire
+      ctx.beginPath(); ctx.moveTo(right+20, midY); ctx.lineTo(right+20, midY+60); ctx.lineTo(left-20, midY+60); ctx.lineTo(left-20, midY); ctx.stroke();
+
+    }else{
+      // parallel rails
+      const top=midY-80, bottom=midY+80;
+      ctx.strokeStyle=wireColor; ctx.beginPath(); ctx.moveTo(left, top); ctx.lineTo(right, top); ctx.moveTo(left, bottom); ctx.lineTo(right, bottom); ctx.stroke();
+      // branches
+      const step=(right-left)/(n+1);
+      for(let i=0;i<n;i++){
+        const bx=left+(i+1)*step;
+        ctx.strokeStyle=wireColor; ctx.beginPath(); ctx.moveTo(bx, top); ctx.lineTo(bx, bottom); ctx.stroke();
+        drawResistor(bx-30, midY-20, 60, `R${i+1}=${formatOhm(rs[i])}`, Vdrops[i], true);
+        drawDotsVertical(bx, top, bottom);
+      }
+      // connect battery to rails
+      ctx.beginPath(); ctx.moveTo(left-20, midY); ctx.lineTo(left-20, bottom); ctx.lineTo(left, bottom); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(left-20, midY); ctx.lineTo(left-20, top); ctx.lineTo(left, top); ctx.stroke();
+    }
+
+    function drawResistor(x, y, w, label, vdrop, vertical=false){
+      ctx.strokeStyle="#00c2a8"; ctx.lineWidth=3;
+      if(!vertical){
+        const zig=8, amp=10; ctx.beginPath(); ctx.moveTo(x,y);
+        const seg=w/zig;
+        for(let i=1;i<=zig;i++){ const dir=i%2?-1:1; ctx.lineTo(x+i*seg, y+dir*amp); }
+        ctx.stroke();
+        ctx.fillStyle="#a9b2c0"; ctx.fillText(label, x+2, y-16);
+        ctx.fillText(`V≈${vdrop.toFixed(2)}V`, x+2, y+24);
+      }else{
+        const zig=8, amp=9, h=w;
+        ctx.beginPath(); ctx.moveTo(x, y-h/2);
+        const seg=h/zig;
+        for(let i=1;i<=zig;i++){ const dir=i%2?-1:1; ctx.lineTo(x+dir*amp, y-h/2 + i*seg); }
+        ctx.stroke();
+        ctx.fillStyle="#a9b2c0"; ctx.fillText(label, x-34, y-h/2-8);
+        ctx.fillText(`V≈${vdrop.toFixed(2)}V`, x-22, y+h/2+18);
+      }
+    }
+    function drawDotsAlong(x, y, w, rightward){
+      const count=Math.max(6, Math.floor(w/30));
+      for(let i=0;i<count;i++){
+        const t = ((i/count)+ (rightward?1:-1)* (I>=0?1:-1) * ( (Date.now()/1000) + 0.2*this.phase) ) % 1;
+        const px = x + t*w;
+        ctx.fillStyle=dotColor; ctx.beginPath(); ctx.arc(px, y, 3, 0, Math.PI*2); ctx.fill();
+      }
+    }
+    function drawDotsVertical(bx, top, bottom){
+      const h = bottom-top;
+      const count=Math.max(6, Math.floor(h/28));
+      for(let i=0;i<count;i++){
+        const t = ((i/count) + ( (Date.now()/1000) + 0.2*this.phase)) % 1;
+        const py = top + t*h;
+        ctx.fillStyle=dotColor; ctx.beginPath(); ctx.arc(bx, py, 3, 0, Math.PI*2); ctx.fill();
+      }
+    }
+    function formatOhm(v){
+      if(v>=1000) return (v/1000).toFixed(2)+'kΩ';
+      return v.toFixed(1)+'Ω';
+    }
+  }
+});
+
+/* ========= 6) Digital Logic – interactive, gate shapes & glow ========= */
+register({
+  id:'logic', name:'Digital Logic',
+  wantsIdle:true,
+  init(p){
+    const title=document.createElement('div'); title.className='panelTitle'; title.textContent='Digital Logic Gates';
+    p.appendChild(title);
+
+    // Input toggles
+    const ig=document.createElement('div'); ig.className='sideGroup';
+    ig.innerHTML = '<div class="panelTitle" style="margin:0 0 6px 0">Inputs</div>';
+    this.state = {A:0,B:1,C:0};
+    ig.appendChild(makePill('A',()=>{this.state.A^=1;}));
+    ig.appendChild(document.createTextNode(' '));
+    ig.appendChild(makePill('B',()=>{this.state.B^=1;}));
+    ig.appendChild(document.createTextNode(' '));
+    ig.appendChild(makePill('C',()=>{this.state.C^=1;}));
+    p.appendChild(ig);
+
+    // Gate selectors
+    this.gates = ['AND','OR','XOR','NAND','NOR','NOT','BUF'];
+    this.g1 = uiSelect(p,'Gate stage 1',this.gates,'AND');
+    this.g2 = uiSelect(p,'Gate stage 2',this.gates,'OR');
+    this.useC = uiSelect(p,'Use C in stage 2 as',['ignore','as input'],'ignore');
+
+    // Live truth table
+    const tblWrap=document.createElement('div'); tblWrap.className='sideGroup';
+    tblWrap.innerHTML='<div class="panelTitle" style="margin:0 0 6px 0">Truth table (A,B → OUT)</div>';
+    this.tblBox=document.createElement('div'); this.tblBox.style.fontFamily='ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'; this.tblBox.style.fontSize='12px';
+    tblWrap.appendChild(this.tblBox); p.appendChild(tblWrap);
+
+    p.addEventListener('input', ()=>{}); // loop redraws continuously
+    this.reset();
+
+    function makePill(name, onClick){
+      const pill=document.createElement('span'); pill.className='pill'; pill.style.marginRight='6px';
+      const d=document.createElement('span'); d.className='dot off';
+      const text=document.createElement('span'); text.textContent=name;
+      pill.append(d,text);
+      pill.onclick=()=>{ onClick(); };
+      pill.update=(on)=>{ d.className = 'dot ' + (on?'on':'off'); };
+      pill.getDot=()=>d;
+      p.addEventListener('draw', ()=> pill.update(this?.state?.[name]===1) );
+      return pill;
+    }
+  },
+  reset(){},
+  step(){ /* animate glow via time */ },
+  evalGate(g, x, y){
+    const a=!!x, b=!!y;
+    switch(g){
+      case 'AND': return a && b;
+      case 'OR':  return a || b;
+      case 'XOR': return a !== b;
+      case 'NAND':return !(a && b);
+      case 'NOR': return !(a || b);
+      case 'NOT': return !a;
+      case 'BUF': return a;
+      default: return false;
+    }
+  },
+  draw(){
+    // emit update event for pills
+    controls.dispatchEvent(new Event('draw'));
+
+    const A=!!this.state.A, B=!!this.state.B, C=!!this.state.C;
+    const s1 = this.evalGate(this.g1.value, A, B);
+    const s2 = this.useC.value==='as input' ? this.evalGate(this.g2.value, s1, C) : this.evalGate(this.g2.value, s1, 0);
+
+    // Truth table
+    const rows=[];
+    for(let a of [0,1]) for(let b of [0,1]){
+      const t1=this.evalGate(this.g1.value,a,b)?1:0;
+      const t2=this.useC.value==='as input' ? (this.evalGate(this.g2.value,t1, C?1:0)?1:0)
+                                            : (this.evalGate(this.g2.value,t1, 0)?1:0);
+      rows.push(`A=${a}  B=${b}  →  ${t2}`);
+    }
+    this.tblBox.innerHTML = rows.join('<br/>');
+
+    // Draw diagram with glow on active wires
+    const glow = (on, base='#a9b2c0') => on ? '#00f0d1' : base;
+    const midY=cv.height/2, left=120, right=cv.width-120;
+
+    // Wires from inputs
+    drawWire(left-40, midY-100, left+40, midY-100, A, 'A');
+    drawWire(left-40, midY-30,  left+40, midY-30,  B, 'B');
+
+    // Gate 1 (uses A,B)
+    drawGate(left+60, midY-130, 110, 80, this.g1.value);
+    drawWire(left+40, midY-100, left+60, midY-95, A);
+    drawWire(left+40, midY-30,  left+60, midY-55, B);
+    drawWire(left+170, midY-95, left+230, midY-55, s1, 'S1');
+
+    // Optional C wire
+    const useC = this.useC.value==='as input';
+    if(useC){
+      drawWire(left-40, midY+40, left+230, midY-25, C, 'C');
+    }else{
+      ctx.setLineDash([6,6]);
+      drawWire(left-40, midY+40, left+180, midY+20, C, 'C');
+      ctx.setLineDash([]);
+      ctx.fillStyle="#a9b2c0"; ctx.fillText('(C ignored)', left+180, midY+20);
+    }
+
+    // Gate 2
+    drawGate(left+250, midY-100, 130, 100, this.g2.value);
+    drawWire(left+230, midY-55, left+250, midY-60, s1);
+    if(useC) drawWire(left+230, midY-25, left+250, midY-40, C);
+
+    // Output
+    drawWire(left+380, midY-60, right-40, midY-60, s2, 'OUT');
+    ctx.fillStyle = glow(s2); ctx.beginPath(); ctx.arc(right-30, midY-60, 9, 0, Math.PI*2); ctx.fill();
+
+    function drawWire(x1,y1,x2,y2,on,label){
+      ctx.strokeStyle = glow(on);
+      ctx.lineWidth = on? 3.5 : 2;
+      ctx.shadowColor = on? '#00f0d1' : 'transparent';
+      ctx.shadowBlur = on? 8 : 0;
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+      ctx.shadowBlur=0;
+      if(label){ ctx.fillStyle="#a9b2c0"; ctx.fillText(label, x1-18, y1-6); }
+    }
+    function drawGate(x,y,w,h,name){
+      ctx.strokeStyle="#3b4660"; ctx.lineWidth=2;
+      // Gate shapes (simple approximations)
+      ctx.beginPath();
+      if(name==='AND' || name==='NAND'){
+        // D-shape
+        ctx.moveTo(x,y); ctx.lineTo(x+w*0.5,y);
+        ctx.arc(x+w*0.5, y+h/2, h/2, -Math.PI/2, Math.PI/2);
+        ctx.lineTo(x,y+h); ctx.closePath(); ctx.stroke();
+      }else if(name==='OR' || name==='NOR' || name==='XOR'){
+        // OR shape with additional input curve for XOR
+        ctx.beginPath();
+        ctx.moveTo(x+10,y); ctx.quadraticCurveTo(x+w*0.35, y+h*0.5, x+10, y+h);
+        ctx.moveTo(x+10,y); ctx.quadraticCurveTo(x+w*0.85, y+h*0.5, x+10, y+h);
+        ctx.stroke();
+        if(name==='XOR'){
+          ctx.beginPath();
+          ctx.moveTo(x, y); ctx.quadraticCurveTo(x+w*0.3, y+h*0.5, x, y+h);
+          ctx.stroke();
+        }
+      }else{ // NOT or BUF: triangle
+        ctx.beginPath();
+        ctx.moveTo(x, y); ctx.lineTo(x, y+h); ctx.lineTo(x+w*0.9, y+h/2); ctx.closePath(); ctx.stroke();
+      }
+      // inversion bubble
+      if(name==='NAND' || name==='NOR' || name==='NOT'){
+        ctx.beginPath(); ctx.arc(x+w-8, y+h/2, 6, 0, Math.PI*2); ctx.stroke();
+      }
+      // label
+      ctx.fillStyle="#a9b2c0"; ctx.fillText(name, x+8, y+14);
+    }
+  }
+});
+
+/* ========= Tabs mount ========= */
+(function mountTabs(){
+  Sims.forEach(s=>{
+    const b=document.createElement('button'); b.textContent=s.name; b.dataset.id=s.id;
+    // visually highlight the two electrical sims
+    if(s.id==='dc' || s.id==='logic'){ b.style.boxShadow='inset 0 0 0 1px rgba(0,240,209,.35)'; }
+    b.onclick=()=>switchTo(s.id); tabs.appendChild(b);
+  });
+})();
+switchTo('dc'); // open on the shiny new DC lab by default
+</script>
+</body>
+</html>
