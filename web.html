@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Education Reimagined — Interactive Flashcard Suite</title>
+  <style>
+    /* --- Theme & Layout (neon glass look) --- */
+    :root{
+      --bg1:#0f1226;
+      --bg2:#14193a;
+      --txt:#e7e9ff;
+      --muted:#aab0ff;
+      --accent:#7c5cff;
+      --accent-2:#00e1ff;
+      --good:#42d392;
+      --warn:#ffd166;
+      --bad:#ff6b6b;
+      --glass: rgba(255,255,255,.08);
+      --glass-2: rgba(255,255,255,.12);
+      --shadow: 0 10px 35px rgba(0,0,0,.35);
+      --radius: 16px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;
+      color:var(--txt);
+      background: radial-gradient(1200px 600px at 20% -10%, #1a1f4a 0, transparent 60%),
+                  radial-gradient(1000px 500px at 120% 0%, #0a5df3 0, transparent 50%),
+                  linear-gradient(120deg, var(--bg1), var(--bg2));
+      overflow-x:hidden;
+    }
+    .glow{
+      position:fixed; inset: -10vmax;
+      background: radial-gradient(closest-side,rgba(124,92,255,.18),transparent),
+                  radial-gradient(closest-side,rgba(0,225,255,.12),transparent);
+      filter: blur(50px);
+      z-index:0; pointer-events:none;
+      animation: drift 18s ease-in-out infinite alternate;
+    }
+    @keyframes drift{ 0%{transform: translate(0,0) scale(1)} 100%{transform: translate(2vw, -2vh) scale(1.05)} }
+    header{
+      position:sticky; top:0; z-index:5;
+      backdrop-filter: blur(8px);
+      background: linear-gradient(180deg, rgba(10,14,40,.75), rgba(10,14,40,0));
+      border-bottom:1px solid rgba(255,255,255,.06);
+    }
+    .wrap{max-width:1100px; margin:0 auto; padding:16px 20px}
+    .brand{display:flex; align-items:center; gap:12px; font-weight:800; letter-spacing:.4px;}
+    .brand .logo{
+      width:36px;height:36px;border-radius:10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 0 22px rgba(124,92,255,.45);
+    }
+    .subtitle{color:var(--muted); font-weight:600; font-size:12px; margin-top:2px}
+    main{position:relative; z-index:1}
+    .panel{
+      background:linear-gradient(180deg, var(--glass), rgba(255,255,255,.04));
+      border:1px solid rgba(255,255,255,.12);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding:20px;
+      margin:24px 0;
+    }
+    .menu-grid{display:grid; gap:16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));}
+    .menu-btn{
+      display:flex; flex-direction:column; gap:8px;
+      min-height:120px; padding:16px; border-radius:14px;
+      background:linear-gradient(180deg, var(--glass), rgba(255,255,255,.03));
+      border:1px solid rgba(255,255,255,.1);
+      cursor:pointer; user-select:none;
+      transition: transform .12s ease, background .2s ease, box-shadow .12s ease;
+      outline:none;
+    }
+    .menu-btn:hover{ transform: translateY(-2px); background:var(--glass-2); }
+    .menu-btn[aria-current="true"]{box-shadow:0 0 0 2px var(--accent) inset, 0 0 22px rgba(124,92,255,.35);}
+    .menu-btn .title{font-weight:800; font-size:18px}
+    .menu-btn .desc{color:var(--muted); font-size:13px; line-height:1.3}
+    .kbd{display:inline-flex; align-items:center; justify-content:center; padding:2px 6px; border-radius:6px; border:1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08); font-size:12px; color:var(--muted); margin-left:6px}
+    .section{display:none} .section.active{display:block}
+    .row{display:flex; gap:16px; flex-wrap:wrap} .col{flex:1 1 320px}
+    input, textarea, select, button{font:inherit; color:inherit;}
+    input[type="text"], textarea{
+      width:100%; padding:12px 14px; border-radius:12px;
+      border:1px solid rgba(255,255,255,.12);
+      background:rgba(255,255,255,.06); outline:none;
+    }
+    input::placeholder, textarea::placeholder{color:#9aa1ff}
+    button.primary{
+      padding:12px 16px; border-radius:12px; border:1px solid rgba(255,255,255,.18);
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color:#0b0f2a; font-weight:800; cursor:pointer;
+      transition: transform .08s ease;
+    }
+    button.primary:hover{ transform: translateY(-1px); }
+    button.ghost{
+      padding:10px 14px; border-radius:12px; border:1px solid rgba(255,255,255,.2);
+      background: rgba(255,255,255,.05); cursor:pointer;
+    }
+    .list{display:grid; gap:10px; margin-top:10px}
+    .card{border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:12px; background:rgba(255,255,255,.05);}
+    .card .qa{display:flex; gap:10px; align-items:flex-start}
+    .badge{font-size:12px; padding:2px 6px; border-radius:999px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.15);}
+    .muted{color:var(--muted)} .spacer{height:10px} .toolbar{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+    .right{margin-left:auto} .stats{display:grid; gap:12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));}
+    .stat{padding:16px; border-radius:14px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1);}
+    .bar{height:12px; border-radius:999px; background:rgba(255,255,255,.08); overflow:hidden; position:relative}
+    .bar > i{display:block; height:100%; width:0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .4s ease;}
+    .pill{display:inline-flex; align-items:center; gap:8px; padding:8px 10px; border-radius:999px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); font-size:13px}
+    .notice{font-size:14px; color:var(--muted)}
+    .grid-quiz{display:grid; gap:16px; grid-template-columns:1fr; max-width:760px}
+    .q-item{padding:16px; border:1px solid rgba(255,255,255,.1); border-radius:12px; background:rgba(255,255,255,.06)}
+    .q-item.correct{box-shadow:0 0 0 2px rgba(66,211,146,.6) inset}
+    .q-item.wrong{box-shadow:0 0 0 2px rgba(255,107,107,.6) inset}
+    .progress{height:10px; border-radius:999px; background:rgba(255,255,255,.1); overflow:hidden}
+    .progress > i{display:block; height:100%; width:0%; background:linear-gradient(90deg, var(--good), var(--accent-2)); transition: width .3s ease}
+    .footer{display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; font-size:13px; color:var(--muted); padding:16px 20px 26px;}
+    .danger{color:var(--bad)} .ok{color:var(--good)} .center{display:flex; align-items:center; justify-content:center}
+    .hide{display:none !important} .small{font-size:12px}
+    .type-area{min-height:200px; white-space:pre-wrap; border-radius:12px; padding:14px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12);}
+    .cursor{display:inline-block; width:10px; height:1.1em; background:var(--txt); animation: blink 1s steps(2) infinite; vertical-align:text-bottom}
+    @keyframes blink{50%{opacity:0}}
+    #simCanvas{width:100%; height:240px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); border-radius:12px}
+    dialog{background:var(--bg2); color:var(--txt); border:1px solid rgba(255,255,255,.1); border-radius:14px; padding:18px 16px; max-width:560px}
+    dialog::backdrop{background: rgba(0,0,0,.45)}
+    .link{color:#a3b6ff; text-decoration: underline; cursor:pointer}
+    @media (max-width:600px){ .menu-btn{min-height:100px} }
+  </style>
+</head>
+<body>
+  <div class="glow" aria-hidden="true"></div>
+  <header>
+    <div class="wrap">
+      <div class="brand" role="heading" aria-level="1">
+        <div class="logo" aria-hidden="true"></div>
+        <div>
+          <div>Education Reimagined</div>
+          <div class="subtitle">Flash Cards • Quiz • Stats • Typewriter • Sim</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap" id="app">
+    <!-- MAIN MENU -->
+    <section id="menu" class="panel section active" aria-label="Main menu">
+      <div class="toolbar">
+        <div class="pill">Navigate with <span class="kbd">↑/↓</span> or <span class="kbd">W/S</span>; Select with <span class="kbd">Enter</span>; Back with <span class="kbd">Esc</span></div>
+        <div class="right small">Deck: <span id="deckCount">0</span>/<span id="deckMax">100</span></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="menu-grid" role="listbox" aria-label="Main options">
+        <button class="menu-btn" data-target="section-type" role="option" aria-current="true">
+          <div class="title">Type Writer</div>
+          <div class="desc">Practice typing with a live typewriter effect and export your note.</div>
+        </button>
+        <button class="menu-btn" data-target="section-flash" role="option">
+          <div class="title">Flash Cards</div>
+          <div class="desc">Create, browse, search, edit, and quiz yourself.</div>
+        </button>
+        <button class="menu-btn" data-target="section-sim" role="option">
+          <div class="title">Simulations</div>
+          <div class="desc">Spawn bouncy particles. Physics sandbox mini-demo.</div>
+        </button>
+        <button class="menu-btn" data-target="section-bot" role="option">
+          <div class="title">Chatbot Questions</div>
+          <div class="desc">Ask about your deck. Answers are pulled from your cards.</div>
+        </button>
+        <button class="menu-btn" data-action="exit" role="option">
+          <div class="title danger">Exit</div>
+          <div class="desc">Clear screen (reload). Save is automatic.</div>
+        </button>
+      </div>
+    </section>
+
+    <!-- FLASH CARDS HUB -->
+    <section id="section-flash" class="panel section" aria-label="Flash Card Education System">
+      <div class="toolbar">
+        <div class="pill">Flash Card Education System</div>
+        <div class="pill">Capacity <span id="capPct">0%</span></div>
+        <div class="pill ok">Cards <b id="cardsBadge">0</b></div>
+        <span class="right">
+          <button class="ghost" id="btnBack1">← Back</button>
+          <button class="ghost" id="btnImport">Import</button>
+          <button class="ghost" id="btnExport">Export</button>
+          <button class="ghost danger" id="btnWipe">Wipe</button>
+        </span>
+      </div>
+
+      <div class="row">
+        <div class="col">
+          <h3>Add New Flash Card</h3>
+          <div class="notice">Max <b id="maxCards">100</b> cards. Keep questions concise.</div>
+          <div class="spacer"></div>
+          <label class="small">Question</label>
+          <input id="qInput" type="text" placeholder="e.g., What is the capital of France?" maxlength="200"/>
+          <div class="spacer"></div>
+          <label class="small">Answer</label>
+          <textarea id="aInput" rows="3" placeholder="e.g., Paris" maxlength="200"></textarea>
+          <div class="spacer"></div>
+          <div class="toolbar">
+            <button class="primary" id="btnAdd">Add Card</button>
+            <div id="addMsg" class="small muted"></div>
+          </div>
+        </div>
+
+        <div class="col">
+          <h3>View All Questions</h3>
+          <div class="toolbar">
+            <input id="search" type="text" placeholder="Search by text…" />
+            <span class="right small muted">Showing <span id="showing">0</span></span>
+          </div>
+          <div id="list" class="list" aria-live="polite"></div>
+        </div>
+      </div>
+
+      <div class="spacer"></div><div class="spacer"></div>
+      <div class="row">
+        <div class="col">
+          <h3>Take Interactive Quiz</h3>
+          <div class="notice">Case-insensitive. <span class="ok">Correct</span> and <span class="danger">Wrong</span> are marked instantly.</div>
+          <div class="spacer"></div>
+          <div class="progress" aria-label="Quiz progress"><i id="quizProgress"></i></div>
+          <div class="spacer"></div>
+          <div id="quizGrid" class="grid-quiz"></div>
+          <div class="toolbar">
+            <button class="primary" id="btnStartQuiz">Start Quiz</button>
+            <button class="ghost" id="btnEndQuiz">End Quiz</button>
+            <div class="right pill">Score: <b id="score">0</b>/<span id="scoreTotal">0</span></div>
+          </div>
+        </div>
+        <div class="col">
+          <h3>Learning Statistics</h3>
+          <div class="stats">
+            <div class="stat">
+              <div>Total Cards</div>
+              <div class="title" id="statTotal" style="font-size:28px; font-weight:900">0</div>
+              <div class="bar"><i id="barCapacity"></i></div>
+              <div class="small muted">Capacity used</div>
+            </div>
+            <div class="stat">
+              <div>Avg Question Length</div>
+              <div class="title" id="statQL" style="font-size:28px; font-weight:900">0</div>
+              <div class="small muted">characters</div>
+            </div>
+            <div class="stat">
+              <div>Avg Answer Length</div>
+              <div class="title" id="statAL" style="font-size:28px; font-weight:900">0</div>
+              <div class="small muted">characters</div>
+            </div>
+          </div>
+          <div class="spacer"></div>
+          <div class="notice">Tips: Aim for short questions (&lt; 80 chars) and atomic answers.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TYPE WRITER -->
+    <section id="section-type" class="panel section" aria-label="Type Writer">
+      <div class="toolbar">
+        <div class="pill">Type Writer</div>
+        <span class="right">
+          <button class="ghost" id="btnBack2">← Back</button>
+          <button class="ghost" id="btnDownloadNote">Download .txt</button>
+          <button class="ghost" id="btnClearNote">Clear</button>
+        </span>
+      </div>
+      <div class="spacer"></div>
+      <div class="type-area" id="typeOutput" aria-live="polite"></div>
+      <div class="spacer"></div>
+      <input id="typeInput" type="text" placeholder="Start typing here…" />
+      <div class="small muted">Press Enter to print. Your text is auto-saved.</div>
+    </section>
+
+    <!-- SIMULATIONS -->
+    <section id="section-sim" class="panel section" aria-label="Simulations">
+      <div class="toolbar">
+        <div class="pill">Mini Physics Sandbox</div>
+        <span class="right">
+          <button class="ghost" id="btnBack3">← Back</button>
+          <button class="ghost" id="btnSpawn">Spawn 10</button>
+          <button class="ghost" id="btnClearBalls">Clear</button>
+        </span>
+      </div>
+      <div class="spacer"></div>
+      <canvas id="simCanvas" width="900" height="240" aria-label="Bouncing simulation"></canvas>
+      <div class="small muted">Click to spawn. Gravity is on. Elastic collisions are approximated.</div>
+    </section>
+
+    <!-- CHATBOT -->
+    <section id="section-bot" class="panel section" aria-label="Chatbot Questions">
+      <div class="toolbar">
+        <div class="pill">Chatbot • Answers from your deck</div>
+        <span class="right">
+          <button class="ghost" id="btnBack4">← Back</button>
+        </span>
+      </div>
+      <div class="spacer"></div>
+      <div class="row">
+        <div class="col">
+          <label class="small">Ask a question related to your cards</label>
+          <input id="botInput" type="text" placeholder="e.g., What’s the capital of France?" />
+          <div class="spacer"></div>
+          <button class="primary" id="btnAsk">Ask</button>
+          <div class="spacer"></div>
+          <div id="botReply" class="card"></div>
+        </div>
+        <div class="col">
+          <div class="notice">How it works: we compare your question to every card's question using token similarity and pick the closest match.</div>
+        </div>
+      </div>
+    </section>
+
+    <dialog id="confirmWipe">
+      <h3>Delete all cards?</h3>
+      <p>This will permanently clear your deck from this browser.</p>
+      <div class="toolbar">
+        <button class="ghost" id="cancelWipe">Cancel</button>
+        <div class="right"></div>
+        <button class="primary danger" id="doWipe">Delete all</button>
+      </div>
+    </dialog>
+
+    <canvas id="confetti" class="hide"></canvas>
+  </main>
+
+  <footer class="footer">
+    <div>Keyboard: <span class="kbd">W/S</span> or <span class="kbd">↑/↓</span> to move, <span class="kbd">Enter</span> to select, <span class="kbd">Esc</span> to go back.</div>
+    <div>Built with vanilla HTML, CSS, and JS. No libraries.</div>
+  </footer>
+
+  <script>
+    /***************
+     * State + Storage
+     ***************/
+    const MAX_CARDS = 100;
+    const els = {
+      // menu + counts
+      menu: $('#menu'), deckCount: $('#deckCount'), deckMax: $('#deckMax'),
+      // sections
+      secFlash: $('#section-flash'), secType: $('#section-type'), secSim: $('#section-sim'), secBot: $('#section-bot'),
+      // flash inputs
+      q: $('#qInput'), a: $('#aInput'), addMsg: $('#addMsg'),
+      list: $('#list'), search: $('#search'),
+      capPct: $('#capPct'), barCapacity: $('#barCapacity'), cardsBadge: $('#cardsBadge'),
+      statTotal: $('#statTotal'), statQL: $('#statQL'), statAL: $('#statAL'),
+      // quiz
+      quizGrid: $('#quizGrid'), quizProgress: $('#quizProgress'), score: $('#score'), scoreTotal: $('#scoreTotal'),
+      // typewriter
+      typeOut: $('#typeOutput'), typeIn: $('#typeInput'),
+      // sim
+      simCanvas: $('#simCanvas'),
+      // bot
+      botIn: $('#botInput'), botReply: $('#botReply'),
+      // misc
+      confetti: $('#confetti')
+    };
+    $('#deckMax').textContent = MAX_CARDS;
+    $('#maxCards').textContent = MAX_CARDS;
+
+    let deck = loadDeck();
+    syncDeckUI();
+
+    /***************
+     * Navigation (maps to original C menus)
+     ***************/
+    const menuButtons = $all('.menu-btn');
+    let selIndex = 0;
+    highlightMenu(selIndex);
+
+    menuButtons.forEach((btn, i)=>{
+      btn.addEventListener('click', ()=> activate(btn));
+      btn.addEventListener('mouseover', ()=> highlightMenu(i));
+    });
+
+    document.addEventListener('keydown', (e)=>{
+      // global ESC to go back to main menu
+      if(e.key === 'Escape'){
+        showSection('menu');
+        return;
+      }
+      // menu kbd navigation
+      if($('#menu').classList.contains('active')){
+        if(['ArrowUp','w','W'].includes(e.key)){
+          selIndex = (selIndex - 1 + menuButtons.length) % menuButtons.length;
+          highlightMenu(selIndex);
+        }else if(['ArrowDown','s','S'].includes(e.key)){
+          selIndex = (selIndex + 1) % menuButtons.length;
+          highlightMenu(selIndex);
+        }else if(e.key === 'Enter'){
+          activate(menuButtons[selIndex]);
+        }
+      }
+    });
+
+    function highlightMenu(i){
+      menuButtons.forEach((b, j)=> b.setAttribute('aria-current', j===i));
+    }
+    function activate(btn){
+      const target = btn.dataset.target;
+      const action = btn.dataset.action;
+      if(action === 'exit'){ location.reload(); return; }
+      if(target) showSection(target);
+    }
+    function showSection(id){
+      $all('.section').forEach(s=> s.classList.remove('active'));
+      const el = typeof id === 'string' ? document.getElementById(id) : id;
+      el.classList.add('active');
+      // update stats when entering flash
+      if(el.id === 'section-flash'){ syncDeckUI(); }
+    }
+    // back buttons
+    $('#btnBack1').onclick = $('#btnBack2').onclick = $('#btnBack3').onclick = $('#btnBack4').onclick = ()=> showSection('menu');
+
+    /***************
+     * Flash Cards — Add / List / Edit / Delete
+     ***************/
+    $('#btnAdd').addEventListener('click', addCard);
+    els.search.addEventListener('input', renderList);
+    $('#btnExport').addEventListener('click', exportDeck);
+    $('#btnImport').addEventListener('click', importDeck);
+    $('#btnWipe').addEventListener('click', ()=> $('#confirmWipe').showModal());
+    $('#cancelWipe').addEventListener('click', ()=> $('#confirmWipe').close());
+    $('#doWipe').addEventListener('click', ()=> { deck = []; persistDeck(); syncDeckUI(); $('#confirmWipe').close(); });
+
+    function addCard(){
+      const q = els.q.value.trim();
+      const a = els.a.value.trim();
+      if(deck.length >= MAX_CARDS){
+        msg(els.addMsg, `Flash card limit reached (${deck.length}/${MAX_CARDS}).`, true);
+        return;
+      }
+      if(!q){ msg(els.addMsg, 'Question cannot be empty.', true); return; }
+      if(!a){ msg(els.addMsg, 'Answer cannot be empty.', true); return; }
+      deck.push({id: uid(), question: q, answer: a, created: Date.now()});
+      els.q.value = ''; els.a.value = '';
+      persistDeck(); syncDeckUI();
+      msg(els.addMsg, 'Card added successfully!');
+      beep(660, 0.06);
+    }
+
+    function renderList(){
+      const q = els.search.value.trim().toLowerCase();
+      const frag = document.createDocumentFragment();
+      let shown = 0;
+      deck.forEach(card=>{
+        const hay = (card.question + ' ' + card.answer).toLowerCase();
+        if(q && !hay.includes(q)) return;
+        shown++;
+        frag.appendChild(renderCardRow(card));
+      });
+      els.list.replaceChildren(frag);
+      $('#showing').textContent = shown;
+    }
+
+    function renderCardRow(card){
+      const row = div('card');
+      const qa = div('qa');
+      const badge = span('badge', `#${indexOf(card)+1}`);
+      const q = div('', `<b>Q:</b> ${esc(card.question)}`);
+      const a = div('', `<span class="ok"><b>A:</b></span> ${esc(card.answer)}`);
+      qa.append(badge, q);
+      const tools = div('toolbar');
+      const btnEdit = button('ghost', 'Edit');
+      const btnDel = button('ghost danger', 'Delete');
+      btnEdit.onclick = ()=> editCard(card);
+      btnDel.onclick = ()=> delCard(card);
+      tools.append(btnEdit, btnDel);
+      row.append(qa, a, tools);
+      return row;
+    }
+
+    function editCard(card){
+      const qn = prompt('Edit question:', card.question);
+      if(qn === null) return;
+      const an = prompt('Edit answer:', card.answer);
+      if(an === null) return;
+      card.question = qn.trim();
+      card.answer = an.trim();
+      persistDeck(); syncDeckUI();
+    }
+    function delCard(card){
+      if(!confirm('Delete this card?')) return;
+      deck = deck.filter(c=> c.id !== card.id);
+      persistDeck(); syncDeckUI();
+    }
+    function indexOf(card){ return deck.findIndex(c=> c.id === card.id) + 1; }
+
+    /***************
+     * Quiz
+     ***************/
+    $('#btnStartQuiz').addEventListener('click', startQuiz);
+    $('#btnEndQuiz').addEventListener('click', endQuiz);
+
+    let quizState = null;
+
+    function startQuiz(){
+      if(deck.length === 0){ alert('No flash cards to quiz on. Add some first.'); return; }
+      quizState = {
+        i:0,
+        score:0,
+        order: shuffle(deck.map(d=> d.id))
+      };
+      els.quizGrid.replaceChildren();
+      els.score.textContent = 0;
+      els.scoreTotal.textContent = deck.length;
+      updateQuizProgress();
+      deck.forEach((card, idx)=>{
+        const qEl = div('q-item');
+        qEl.dataset.id = card.id;
+        qEl.innerHTML = `
+          <div class="small muted">Question ${idx+1} of ${deck.length}</div>
+          <div style="margin:6px 0 10px; font-weight:800">${esc(card.question)}</div>
+          <input type="text" placeholder="Your answer…" />
+          <div class="toolbar" style="margin-top:10px">
+            <button class="primary">Check</button>
+            <button class="ghost">Reveal</button>
+            <div class="right small muted">Correct answer will show here</div>
+          </div>
+        `;
+        const input = qEl.querySelector('input');
+        const [btnCheck, btnReveal] = qEl.querySelectorAll('button');
+        const hint = qEl.querySelector('.right');
+        btnCheck.onclick = ()=>{
+          const ans = input.value.trim();
+          const cardReal = deck.find(c=> c.id === card.id);
+          const isCorrect = normalize(ans) === normalize(cardReal.answer);
+          qEl.classList.remove('correct', 'wrong');
+          qEl.classList.add(isCorrect ? 'correct' : 'wrong');
+          hint.innerHTML = isCorrect ? '<span class="ok">Correct!</span>' : `<span class="danger">Wrong.</span> <span class="muted">Answer:</span> ${esc(cardReal.answer)}`;
+          if(isCorrect){ 
+            if(!qEl.dataset.done){ quizState.score++; els.score.textContent = quizState.score; qEl.dataset.done = '1'; beep(880, 0.07); }
+          } else { beep(220, 0.08); }
+          quizState.i++;
+          updateQuizProgress();
+          if(quizState.score === deck.length){ launchConfetti(); }
+        };
+        btnReveal.onclick = ()=>{
+          const cardReal = deck.find(c=> c.id === card.id);
+          hint.innerHTML = `<span class="muted">Answer:</span> ${esc(cardReal.answer)}`;
+        }
+        els.quizGrid.appendChild(qEl);
+      });
+      els.quizGrid.scrollIntoView({behavior:'smooth', block:'start'});
+    }
+    function endQuiz(){
+      els.quizGrid.replaceChildren();
+      quizState = null;
+      updateQuizProgress();
+    }
+    function updateQuizProgress(){
+      const total = deck.length || 1;
+      const pct = quizState ? (quizState.score/total)*100 : 0;
+      $('#quizProgress').style.width = pct.toFixed(1)+'%';
+    }
+
+    /***************
+     * Stats
+     ***************/
+    function computeStats(){
+      const total = deck.length;
+      let qsum = 0, asum = 0;
+      deck.forEach(c=> { qsum += c.question.length; asum += c.answer.length; });
+      const qavg = total ? Math.round(qsum/total) : 0;
+      const aavg = total ? Math.round(asum/total) : 0;
+      return { total, qavg, aavg, capPct: Math.round((total/MAX_CARDS)*100) };
+    }
+    function syncDeckUI(){
+      $('#deckCount').textContent = deck.length;
+      $('#cardsBadge').textContent = deck.length;
+      $('#capPct').textContent = Math.round((deck.length/MAX_CARDS)*100)+'%';
+      $('#statTotal').textContent = deck.length;
+      const s = computeStats();
+      $('#statQL').textContent = s.qavg;
+      $('#statAL').textContent = s.aavg;
+      $('#showing').textContent = deck.length;
+      renderList();
+      $('#barCapacity').style.width = s.capPct+'%';
+      $('#quizProgress').style.width = (quizState ? (quizState.score/(deck.length||1))*100 : 0)+'%';
+      $('#scoreTotal').textContent = deck.length;
+      $('#deckMax').textContent = MAX_CARDS;
+    }
+
+    function exportDeck(){
+      const blob = new Blob([JSON.stringify(deck, null, 2)], {type:'application/json'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'flashcards_deck.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+    function importDeck(){
+      const pick = document.createElement('input');
+      pick.type = 'file'; pick.accept = '.json,application/json';
+      pick.onchange = ()=>{
+        const file = pick.files[0]; if(!file) return;
+        const reader = new FileReader();
+        reader.onload = ()=>{
+          try{
+            const parsed = JSON.parse(reader.result);
+            if(!Array.isArray(parsed)) throw new Error('Bad file');
+            const merged = [...deck];
+            parsed.forEach(c=>{
+              if(c.question && c.answer){
+                if(merged.length < MAX_CARDS){
+                  merged.push({id: uid(), question: String(c.question), answer: String(c.answer), created: Date.now()});
+                }
+              }
+            });
+            deck = merged.slice(0, MAX_CARDS);
+            persistDeck(); syncDeckUI();
+            alert('Imported!');
+          }catch(e){ alert('Import failed. Make sure it is a valid deck JSON.'); }
+        };
+        reader.readAsText(file);
+      };
+      pick.click();
+    }
+
+    /***************
+     * Typewriter
+     ***************/
+    const NOTE_KEY = 'typewriter-note';
+    $('#typeOutput').innerHTML = (localStorage.getItem(NOTE_KEY) || '') + '<span class="cursor"></span>';
+    $('#btnDownloadNote').onclick = ()=>{
+      const text = $('#typeOutput').textContent.replace(/\u2588$/, '');
+      const blob = new Blob([text], {type:'text/plain'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'note.txt'; a.click(); URL.revokeObjectURL(a.href);
+    };
+    $('#btnClearNote').onclick = ()=>{
+      if(confirm('Clear the note?')){
+        localStorage.removeItem(NOTE_KEY);
+        $('#typeOutput').innerHTML = '<span class="cursor"></span>';
+      }
+    };
+    $('#typeInput').addEventListener('keydown', (e)=>{
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        const line = $('#typeInput').value;
+        appendType(line + '\n');
+        $('#typeInput').value='';
+        beep(660, 0.04);
+      }
+    });
+    function appendType(text){
+      const before = $('#typeOutput').innerHTML.replace(/<span class="cursor"><\/span>$/,'');
+      $('#typeOutput').innerHTML = before + esc(text) + '<span class="cursor"></span>';
+      localStorage.setItem(NOTE_KEY, $('#typeOutput').textContent);
+      $('#typeOutput').scrollTop = $('#typeOutput').scrollHeight;
+    }
+
+    /***************
+     * Simulation — bouncy balls
+     ***************/
+    const sim = { balls:[], ctx: $('#simCanvas').getContext('2d'), running:false };
+    function rand(min,max){ return Math.random()*(max-min)+min; }
+    function spawn(n=10, x, y){
+      const rect = $('#simCanvas').getBoundingClientRect();
+      for(let i=0;i<n;i++){
+        sim.balls.push({
+          x: x ?? rand(20, rect.width-20),
+          y: y ?? rand(20, rect.height-20),
+          r: rand(6,12),
+          vx: rand(-2,2),
+          vy: rand(-1,0),
+        });
+      }
+      if(!sim.running){ sim.running = true; requestAnimationFrame(tick); }
+    }
+    function tick(){
+      const canvas = $('#simCanvas');
+      const ctx = sim.ctx;
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0,0,w,h);
+      sim.balls.forEach(b=>{
+        b.vy += 0.08; // gravity
+        b.x += b.vx; b.y += b.vy;
+        if(b.x < b.r){ b.x = b.r; b.vx *= -0.9 }
+        if(b.x > w-b.r){ b.x = w-b.r; b.vx *= -0.9 }
+        if(b.y > h-b.r){ b.y = h-b.r; b.vy *= -0.8; b.vx *= 0.98 }
+        if(b.y < b.r){ b.y = b.r; b.vy *= -0.8 }
+      });
+      sim.balls.forEach(b=>{
+        ctx.beginPath();
+        const grd = ctx.createRadialGradient(b.x-b.r*0.4,b.y-b.r*0.4,2,b.x,b.y,b.r);
+        grd.addColorStop(0, 'rgba(124,92,255,0.95)');
+        grd.addColorStop(1, 'rgba(0,225,255,0.5)');
+        ctx.fillStyle = grd;
+        ctx.arc(b.x,b.y,b.r,0,Math.PI*2);
+        ctx.fill();
+      });
+      if(sim.balls.length>0) requestAnimationFrame(tick); else sim.running=false;
+    }
+    $('#btnSpawn').onclick = ()=> spawn(10);
+    $('#btnClearBalls').onclick = ()=> sim.balls = [];
+    $('#simCanvas').addEventListener('click', (e)=>{
+      const rect = $('#simCanvas').getBoundingClientRect();
+      spawn(5, e.clientX-rect.left, e.clientY-rect.top);
+    });
+
+    /***************
+     * Chatbot — nearest question
+     ***************/
+    $('#btnAsk').onclick = ()=>{
+      const q = $('#botInput').value.trim();
+      if(!q){ $('#botReply').textContent = 'Ask something first.'; return; }
+      if(deck.length===0){ $('#botReply').textContent = 'Your deck is empty. Add cards, then ask again.'; return; }
+      const scored = deck.map(c=> ({ c, s: similarity(q, c.question) }))
+                         .sort((a,b)=> b.s - a.s);
+      const best = scored[0];
+      const pct = Math.round(best.s*100);
+      $('#botReply').innerHTML = `
+        <div><b>Closest card (match ${pct}%)</b></div>
+        <div class="spacer"></div>
+        <div><b>Q:</b> ${esc(best.c.question)}</div>
+        <div class="ok"><b>A:</b> ${esc(best.c.answer)}</div>
+        <div class="spacer"></div>
+        <div class="small muted">Tip: add more cards to improve matches.</div>
+      `;
+    };
+    function similarity(a,b){
+      const A = tokens(a), B = tokens(b);
+      const setA = new Set(A), setB = new Set(B);
+      const inter = A.filter(x=> setB.has(x)).length;
+      const union = new Set([...A, ...B]).size || 1;
+      return inter/union;
+    }
+    function tokens(s){
+      return s.toLowerCase().replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(Boolean);
+    }
+
+    /***************
+     * Helpers + Audio + Confetti
+     ***************/
+    function $(q){ return document.querySelector(q); }
+    function $all(q){ return Array.from(document.querySelectorAll(q)); }
+    function div(cls, html){ const e = document.createElement('div'); if(cls) e.className=cls; if(html!=null) e.innerHTML=html; return e; }
+    function span(cls, html){ const e = document.createElement('span'); if(cls) e.className=cls; if(html!=null) e.innerHTML=html; return e; }
+    function button(cls, text){ const e = document.createElement('button'); if(cls) e.className=cls; e.textContent=text; return e; }
+    function msg(node, text, bad=false){ node.textContent = text; node.style.color = bad ? 'var(--bad)' : 'var(--muted)'; setTimeout(()=> node.textContent='', 1800); }
+    function uid(){ return Math.random().toString(36).slice(2) + Date.now().toString(36).slice(4); }
+    function esc(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+    function normalize(s){ return s.toLowerCase().trim(); }
+    function persistDeck(){ localStorage.setItem('flashcards-deck', JSON.stringify(deck)); }
+    function loadDeck(){ try{ return JSON.parse(localStorage.getItem('flashcards-deck')) || [] }catch{ return [] } }
+
+    // tiny beep generator
+    let audioCtx;
+    function beep(freq=440, dur=0.05){
+      try{
+        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = 'sine'; o.frequency.value = freq;
+        o.connect(g); g.connect(audioCtx.destination);
+        const now = audioCtx.currentTime;
+        g.gain.setValueAtTime(.0001, now);
+        g.gain.exponentialRampToValueAtTime(.3, now + 0.01);
+        g.gain.exponentialRampToValueAtTime(.0001, now + dur);
+        o.start(now); o.stop(now + dur);
+      }catch(_){ /* ignore */ }
+    }
+
+    // confetti (canvas)
+    function launchConfetti(){
+      const c = $('#confetti');
+      c.width = window.innerWidth; c.height = window.innerHeight;
+      c.classList.remove('hide');
+      const ctx = c.getContext('2d');
+      const parts = Array.from({length:140}, ()=> ({
+        x: Math.random()*c.width,
+        y: -20 - Math.random()*c.height/2,
+        r: 6 + Math.random()*8,
+        vx: -2 + Math.random()*4,
+        vy: 2 + Math.random()*3,
+        rot: Math.random()*Math.PI,
+        vr: -0.1 + Math.random()*0.2
+      }));
+      let t = 0;
+      function step(){
+        ctx.clearRect(0,0,c.width,c.height);
+        parts.forEach(p=>{
+          p.x += p.vx; p.y += p.vy; p.rot += p.vr; p.vy += 0.02;
+          ctx.save();
+          ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+          const grd = ctx.createLinearGradient(-p.r,-p.r,p.r,p.r);
+          grd.addColorStop(0, '#7c5cff'); grd.addColorStop(1, '#00e1ff');
+          ctx.fillStyle = grd;
+          ctx.fillRect(-p.r,-p.r, p.r*2, p.r*2);
+          ctx.restore();
+        });
+        t++;
+        if(t<220) requestAnimationFrame(step); else c.classList.add('hide');
+      }
+      requestAnimationFrame(step);
+    }
+
+    // utility
+    function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]] } return a }
+    function resizeCanvasToDisplaySize(canvas){
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.round(rect.width * window.devicePixelRatio);
+      canvas.height = Math.round(rect.height * window.devicePixelRatio);
+    }
+    window.addEventListener('resize', ()=> resizeCanvasToDisplaySize($('#simCanvas')));
+    resizeCanvasToDisplaySize($('#simCanvas'));
+  </script>
+</body>
+</html>

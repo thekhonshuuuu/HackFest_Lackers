@@ -5,866 +5,737 @@
 #include <conio.h>
 #include <windows.h>
 
-// ===== ANSI color codes =====
-#define ANSI_RESET      "\x1b[0m"
-#define ANSI_GREEN      "\x1b[32m"
-#define ANSI_RED        "\x1b[31m"
-#define ANSI_YELLOW     "\x1b[33m"
-#define ANSI_BLUE       "\x1b[34m"
-#define ANSI_MAGENTA    "\x1b[35m"
-#define ANSI_CYAN       "\x1b[36m"
-#define ANSI_WHITE      "\x1b[37m"
-#define ANSI_GRAY       "\x1b[90m"
-#define ANSI_BOLD       "\x1b[1m"
+/* ===== ANSI / UI ===== */
+#define RESET   "\x1b[0m"
+#define RED     "\x1b[31m"
+#define GREEN   "\x1b[32m"
+#define YELLOW  "\x1b[33m"
+#define BLUE    "\x1b[34m"
+#define MAGENTA "\x1b[35m"
+#define CYAN    "\x1b[36m"
+#define WHITE   "\x1b[37m"
+#define BOLD    "\x1b[1m"
 
-#define MAX_CARDS 100
-#define MAX_LEN   200
-#define SUDOKU_SIZE 9
+#define ANSI_RESET  "\x1b[0m"
+#define ANSI_GREEN  "\x1b[32m"
+#define ANSI_RED    "\x1b[31m"
+#define ANSI_GRAY   "\x1b[90m"
+#define ANSI_BOLD   "\x1b[1m"
+
+#ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
+#define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
+#endif
+#ifndef DISABLE_NEWLINE_AUTO_RETURN
+#define DISABLE_NEWLINE_AUTO_RETURN 0x0008
+#endif
+
+#define SIZE 9
 #define MAX_MISTAKES 10
-#define ESC_KEY 27
 
-// ===== Data types =====
-typedef struct {
-    char question[MAX_LEN];
-    char answer[MAX_LEN];
-} FlashCard;
+#define MENU_W 24
+#define MAX_CARDS 100
+#define MAX_LEN  200
+
 
 typedef struct {
     char target[30];
     int  gamesPlayed;
 } GameData;
 
+/* ===== Data ===== */
+typedef struct { char question[MAX_LEN]; char answer[MAX_LEN]; } FlashCard;
 static FlashCard deck[MAX_CARDS];
 static int totalCards = 0;
 
-// Sudoku game data
-static int puzzle[SUDOKU_SIZE][SUDOKU_SIZE] = {
-    {5, 3, 0, 0, 7, 0, 0, 0, 0},
-    {6, 0, 0, 1, 9, 5, 0, 0, 0},
-    {0, 9, 8, 0, 0, 0, 0, 6, 0},
-    {8, 0, 0, 0, 6, 0, 0, 0, 3},
-    {4, 0, 0, 8, 0, 3, 0, 0, 1},
-    {7, 0, 0, 0, 2, 0, 0, 0, 6},
-    {0, 6, 0, 0, 0, 0, 2, 8, 0},
-    {0, 0, 0, 4, 1, 9, 0, 0, 5},
-    {0, 0, 0, 0, 8, 0, 0, 7, 9}
-};
+/* ===== Layout helpers ===== */
+typedef struct { int x, y, w, h; } Rect;
 
-static int solution[SUDOKU_SIZE][SUDOKU_SIZE] = {
-    {5, 3, 4, 6, 7, 8, 9, 1, 2},
-    {6, 7, 2, 1, 9, 5, 3, 4, 8},
-    {1, 9, 8, 3, 4, 2, 5, 6, 7},
-    {8, 5, 9, 7, 6, 1, 4, 2, 3},
-    {4, 2, 6, 8, 5, 3, 7, 9, 1},
-    {7, 1, 3, 9, 2, 4, 8, 5, 6},
-    {9, 6, 1, 5, 3, 7, 2, 8, 4},
-    {2, 8, 7, 4, 1, 9, 6, 3, 5},
-    {3, 4, 5, 2, 8, 6, 1, 7, 9}
-};
-
-static int given[SUDOKU_SIZE][SUDOKU_SIZE];
-
-// ===== Forward declarations =====
-void clearScreen(void);
-void hideCursor(void);
-void showCursor(void);
-void displayHeader(void);
-void displayMenuMain(int selected);
-void displayHeaderFlash(void);
-void displayMenuFlash(int selected);
-void showExitMessage(void);
-int checkEscapeKey(void);
-
-void showTypeWriter(void);
-void showFlash(void);
-void showGuessingGame(void);
-void showChatbot(void);
-
-// flash subfeatures
-void showAddCard(void);
-void showViewCards(void);
-void showQuiz(void);
-void showStats(void);
-
-// typing-test helpers
-void print_colored_char(char c, const char* color);
-void draw_text(char** words, int num_words, int current_word_index, const char* typed_word, double wpm, double accuracy, int time_left);
-
-// guessing game 
-void saveGameData(GameData data);
-GameData loadGameData(void);
-char getSingleChar(void);
-void playGuessingGame(void);
-
-// sudoku helpers
-void print_sudoku_header(void);
-void print_sudoku_board(void);
-int is_sudoku_complete(void);
-void flush_line(void);
-void play_sudoku_game(void);
-void sudoku_menu(void);
-
-// ===== Utilities =====
-static int enableVTMode(void) {
-    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    if (hOut == INVALID_HANDLE_VALUE) return 0;
-    DWORD dwMode = 0;
-    if (!GetConsoleMode(hOut, &dwMode)) return 0;
-    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-    return SetConsoleMode(hOut, dwMode);
-}
-
-void clearScreen(void) {
-    system("cls");
-}
-
-void hideCursor(void) {
-    CONSOLE_CURSOR_INFO info;
+static void fastClear(void) {
     HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
-    GetConsoleCursorInfo(h, &info);
-    info.bVisible = FALSE;
-    SetConsoleCursorInfo(h, &info);
+    CONSOLE_SCREEN_BUFFER_INFO csbi; COORD origin = {0,0};
+    GetConsoleScreenBufferInfo(h, &csbi);
+    DWORD cells = csbi.dwSize.X * csbi.dwSize.Y, written;
+    FillConsoleOutputCharacter(h, ' ', cells, origin, &written);
+    FillConsoleOutputAttribute(h, csbi.wAttributes, cells, origin, &written);
+    SetConsoleCursorPosition(h, origin);
 }
-
-void showCursor(void) {
-    CONSOLE_CURSOR_INFO info;
-    HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
-    GetConsoleCursorInfo(h, &info);
-    info.bVisible = TRUE;
-    SetConsoleCursorInfo(h, &info);
+static void setCursor(int x, int y) {
+    COORD c = { (SHORT)x, (SHORT)y };
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
 }
-
-void showExitMessage(void) {
-    clearScreen();
-    printf(ANSI_BOLD ANSI_GREEN "===============================================================================\n");
-    printf("                          Thanks for using our system!                         \n");
-    printf("===============================================================================\n" ANSI_RESET);
-    printf(ANSI_CYAN "Hope you enjoyed learning with our educational tools!\n" ANSI_RESET);
-    printf(ANSI_YELLOW "Press any key to exit...\n" ANSI_RESET);
-    _getch();
+static void hideCursor(void) {
+    CONSOLE_CURSOR_INFO ci; ci.dwSize = 25; ci.bVisible = FALSE;
+    SetConsoleCursorInfo(GetStdHandle(STD_OUTPUT_HANDLE), &ci);
 }
-
-int checkEscapeKey(void) {
-    if (_kbhit()) {
-        int key = _getch();
-        if (key == ESC_KEY) {
-            printf(ANSI_YELLOW "\n\nExiting to main menu... (ESC pressed)\n" ANSI_RESET);
-            Sleep(1000); // Brief pause to show message
-            return 1;
-        }
-        // Put the key back if it wasn't ESC (this is a simplification)
-        return 0;
+static void showCursor(void) {
+    CONSOLE_CURSOR_INFO ci; ci.dwSize = 25; ci.bVisible = TRUE;
+    SetConsoleCursorInfo(GetStdHandle(STD_OUTPUT_HANDLE), &ci);
+}
+static void getConsoleSize(int* cols, int* rows) {
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
+    *cols = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+    *rows = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
+}
+static void drawBox(Rect r) {
+    for (int i=0;i<r.w;i++) { setCursor(r.x+i, r.y);       putchar(i==0?'+':(i==r.w-1?'+':'-')); }
+    for (int i=0;i<r.w;i++) { setCursor(r.x+i, r.y+r.h-1); putchar(i==0?'+':(i==r.w-1?'+':'-')); }
+    for (int j=1;j<r.h-1;j++) {
+        setCursor(r.x,           r.y+j); putchar('|');
+        setCursor(r.x+r.w-1,     r.y+j); putchar('|');
     }
-    return 0;
+}
+static void clearContent(Rect r) {
+    for (int row=1; row<r.h-1; ++row) {
+        setCursor(r.x+1, r.y+row);
+        for (int col=0; col<r.w-2; ++col) putchar(' ');
+    }
+}
+static void printIn(Rect r, int px, int py, const char* s) {
+    int x = r.x + 1 + (px<0?0:px);
+    int y = r.y + 1 + (py<0?0:py);
+    if (x > r.x + r.w - 2) x = r.x + r.w - 2;
+    if (y > r.y + r.h - 2) y = r.y + r.h - 2;
+    setCursor(x, y);
+    fputs(s, stdout);
 }
 
-// ===== Menus & headers =====
-void displayHeader(void) {
-    printf(ANSI_BOLD ANSI_MAGENTA "              Education Reimagined              \n" ANSI_RESET);
-    printf("                     Menu                       \n\n");
-}
+/* ===== Chrome ===== */
+static void drawAppChrome(Rect* outSidebar, Rect* outContent) {
+    int C,R; getConsoleSize(&C,&R);
+    fastClear();
 
-void displayMenuMain(int selected) {
-    const char* options[] = {
+    // Header bar
+    printf(BOLD MAGENTA);
+    setCursor(0,0);
+    for (int i=0;i<C;i++) putchar(' ');
+    setCursor((C-24)/2, 0); printf("Edutainment");
+    printf(RESET);
+
+    Rect sidebar = (Rect){0,1,MENU_W,R-1};
+    Rect content = (Rect){MENU_W,1,C-MENU_W,R-1};
+    drawBox(sidebar);
+    drawBox(content);
+    printIn(sidebar,1,0,BOLD " Menu" RESET);
+
+    if (outSidebar) *outSidebar = sidebar;
+    if (outContent) *outContent = content;
+}
+static void drawSidebar(Rect sidebar, int selected) {
+    // Added two options: Algorithm Mode, Redirect System (both "Coming Soon")
+    const char* opts[] = {
         "Type Writer",
         "Flash Cards",
-        "Word Guessing Game",
-        "Sudoku Challenge",
+        "Word Guessing",
+        "Sudoku",
+        "Algorithm Mode ",
+        "Simulation",
         "Exit"
     };
-    for (int i = 0; i < 5; ++i) {
-        if (i == selected) printf(ANSI_GREEN "-> " ANSI_WHITE "%s" ANSI_RESET "\n", options[i]);
-        else               printf(ANSI_CYAN  "   %s" ANSI_RESET "\n", options[i]);
+    int n = (int)(sizeof(opts)/sizeof(opts[0]));
+    for (int i=0;i<n;i++) {
+        setCursor(sidebar.x+2, sidebar.y+2+i);
+        if (i==selected) printf(GREEN "-> " WHITE "%-16s" RESET, opts[i]);
+        else             printf(CYAN  "   %-16s" RESET, opts[i]);
     }
+    setCursor(sidebar.x+2, sidebar.y+sidebar.h-2);
+    printf(YELLOW "W/S or \x18\x19, Enter=open, ESC=quit" RESET);
 }
 
-void displayHeaderFlash(void) {
-    printf(ANSI_BOLD ANSI_MAGENTA "              Flash Card Education System              \n" ANSI_RESET "\n");
-}
+/* ===== Typewriter pane ===== */
+static void print_colored_char(char c, const char* color) { printf("%s%c%s", color, c, ANSI_RESET); }
 
-void displayMenuFlash(int selected) {
-    const char* options[] = {
-        "Add New Flash Card",
-        "View All Questions",
-        "Take Interactive Quiz",
-        "View Statistics",
-        "Back"
-    };
-    for (int i = 0; i < 5; ++i) {
-        if (i == selected) printf(ANSI_GREEN "-> " ANSI_WHITE "%s" ANSI_RESET "\n", options[i]);
-        else               printf(ANSI_CYAN  "   %s" ANSI_RESET "\n", options[i]);
-    }
-    printf("\n" ANSI_YELLOW "  Cards in deck: %d/%d\n" ANSI_RESET, totalCards, MAX_CARDS);
-}
+static void type_draw(Rect c, char** words, int N, int idx, const char* typed, double wpm, double acc, int tleft) {
+    clearContent(c);
+    setCursor(c.x+2, c.y+1);
+    printf(BOLD "Type Writer — " RESET "WPM: %.1f | Acc: %.1f%% | Time: %ds", wpm, acc, tleft);
 
-// ===== Flash Cards =====
-void showAddCard(void) {
-    showCursor();
-    clearScreen();
-    printf(ANSI_BOLD ANSI_CYAN "=== ADD NEW FLASH CARD ===\n\n" ANSI_RESET);
-    printf(ANSI_GRAY "(Press ESC at any time to cancel and return to menu)\n\n" ANSI_RESET);
-    
-    if (totalCards >= MAX_CARDS) {
-        printf(ANSI_RED "Flash card limit reached! (%d/%d)\n\n" ANSI_RESET, totalCards, MAX_CARDS);
-        printf("Press any key to return to menu..."); _getch(); hideCursor(); return;
-    }
-    
-    printf("Enter your question:\n" ANSI_CYAN "> " ANSI_RESET);
-    
-    // Enhanced input with ESC check
-    char buffer[MAX_LEN];
-    int i = 0;
-    while (i < MAX_LEN - 1) {
-        if (_kbhit()) {
-            int ch = _getch();
-            if (ch == ESC_KEY) {
-                printf(ANSI_YELLOW "\n\nOperation cancelled!\n" ANSI_RESET);
-                printf("Press any key to return to menu..."); _getch(); hideCursor(); return;
-            } else if (ch == 13) { // Enter
-                buffer[i] = '\0';
-                printf("\n");
-                break;
-            } else if (ch == 8 && i > 0) { // Backspace
-                i--;
-                printf("\b \b");
-            } else if (ch >= 32 && ch <= 126) { // Printable characters
-                buffer[i++] = ch;
-                printf("%c", ch);
+    int x=0, y=3, maxw = c.w - 4;
+    for (int i=0;i<N;i++) {
+        const char* w = words[i]; int wl = (int)strlen(w) + 1;
+        if (x + wl > maxw) { x = 0; y += 1; }
+        if (y >= c.h-3) break;
+        setCursor(c.x+2+x, c.y+y);
+        if (i < idx) {
+            printf(ANSI_GREEN "%s " ANSI_RESET, w);
+        } else if (i == idx) {
+            int tl=(int)strlen(typed), wl2=(int)strlen(w);
+            for (int j=0;j<tl;j++) {
+                if (j<wl2 && typed[j]==w[j]) print_colored_char(w[j], ANSI_GREEN);
+                else                          print_colored_char(typed[j], ANSI_RED);
             }
-        }
-    }
-    
-    if (buffer[0] == '\0') { 
-        printf(ANSI_RED "\nQuestion cannot be empty!\n" ANSI_RESET); 
-        printf("Press any key to continue..."); _getch(); hideCursor(); return; 
-    }
-    strcpy(deck[totalCards].question, buffer);
-
-    printf("\nEnter the answer:\n" ANSI_CYAN "> " ANSI_RESET);
-    
-    // Enhanced input with ESC check for answer
-    i = 0;
-    while (i < MAX_LEN - 1) {
-        if (_kbhit()) {
-            int ch = _getch();
-            if (ch == ESC_KEY) {
-                printf(ANSI_YELLOW "\n\nOperation cancelled!\n" ANSI_RESET);
-                printf("Press any key to return to menu..."); _getch(); hideCursor(); return;
-            } else if (ch == 13) { // Enter
-                buffer[i] = '\0';
-                printf("\n");
-                break;
-            } else if (ch == 8 && i > 0) { // Backspace
-                i--;
-                printf("\b \b");
-            } else if (ch >= 32 && ch <= 126) { // Printable characters
-                buffer[i++] = ch;
-                printf("%c", ch);
-            }
-        }
-    }
-    
-    if (buffer[0] == '\0') { 
-        printf(ANSI_RED "\nAnswer cannot be empty!\n" ANSI_RESET); 
-        printf("Press any key to continue..."); _getch(); hideCursor(); return; 
-    }
-    strcpy(deck[totalCards].answer, buffer);
-
-    totalCards++;
-    printf(ANSI_GREEN "\n✓ Card added successfully!\n\n" ANSI_RESET);
-    printf("Press any key to return to menu..."); _getch(); hideCursor();
-}
-
-void showViewCards(void) {
-    clearScreen();
-    printf(ANSI_BOLD ANSI_BLUE "=== YOUR FLASH CARDS ===\n\n" ANSI_RESET);
-    printf(ANSI_GRAY "(Press ESC at any time to return to menu)\n\n" ANSI_RESET);
-    
-    if (totalCards == 0) {
-        printf(ANSI_YELLOW "No flash cards available yet!\n\n" ANSI_RESET);
-        printf("Press any key to return to menu..."); _getch(); return;
-    }
-    
-    for (int i = 0; i < totalCards; ++i) {
-        // Check for ESC key during card display
-        if (checkEscapeKey()) return;
-        
-        printf(ANSI_MAGENTA "Card #%d:\n" ANSI_RESET, i + 1);
-        printf(ANSI_WHITE   "Q: %s\n" ANSI_RESET, deck[i].question);
-        printf(ANSI_GREEN   "A: %s\n\n" ANSI_RESET, deck[i].answer);
-        
-        if ((i + 1) % 5 == 0 && i + 1 < totalCards) { 
-            printf("Press any key to see more (or ESC to exit)..."); 
-            int key = _getch(); 
-            if (key == ESC_KEY) return;
-            printf("\n"); 
-        }
-    }
-    printf("Press any key to return to menu..."); _getch();
-}
-
-void showQuiz(void) {
-    showCursor();
-    clearScreen();
-    printf(ANSI_BOLD ANSI_MAGENTA "=== INTERACTIVE QUIZ ===\n\n" ANSI_RESET);
-    printf(ANSI_GRAY "(Press ESC at any time to exit quiz)\n\n" ANSI_RESET);
-    
-    if (totalCards == 0) { 
-        printf(ANSI_YELLOW "No flash cards to quiz on!\n\n" ANSI_RESET); 
-        printf("Press any key to continue..."); _getch(); hideCursor(); return; 
-    }
-
-    int score = 0; 
-    char userAnswer[MAX_LEN];
-    
-    for (int i = 0; i < totalCards; ++i) {
-        printf(ANSI_YELLOW "Question %d of %d:\n" ANSI_RESET "%s\n\n", i + 1, totalCards, deck[i].question);
-        printf("Your answer (or type 'ESC' to exit): ");
-        
-        fgets(userAnswer, MAX_LEN, stdin);
-        userAnswer[strcspn(userAnswer, "\n")] = '\0';
-        
-        // Check if user typed 'ESC' to exit
-        if (strcmp(userAnswer, "ESC") == 0 || strcmp(userAnswer, "esc") == 0) {
-            printf(ANSI_YELLOW "\nQuiz cancelled!\n" ANSI_RESET);
-            printf("Press any key to return to menu..."); _getch(); hideCursor(); return;
-        }
-        
-        if (strcmp(userAnswer, deck[i].answer) == 0) { 
-            printf(ANSI_GREEN "✓ Correct!\n\n" ANSI_RESET); 
-            score++; 
-        }
-        else { 
-            printf(ANSI_RED "✗ Wrong!\n" ANSI_RESET ANSI_GREEN "Correct answer: %s\n\n" ANSI_RESET, deck[i].answer); 
-        }
-        
-        if (i < totalCards - 1) { 
-            printf("Press any key for next question (or ESC to exit)..."); 
-            int key = _getch(); 
-            if (key == ESC_KEY) {
-                printf(ANSI_YELLOW "\n\nQuiz cancelled!\n" ANSI_RESET);
-                printf("Press any key to return to menu..."); _getch(); hideCursor(); return;
-            }
-            printf("\n"); 
-        }
-    }
-
-    double pct = (double)score / totalCards * 100.0;
-    printf("==============================\n" ANSI_BOLD ANSI_CYAN "QUIZ RESULTS\n" ANSI_RESET "==============================\n");
-    printf("Your Score: " ANSI_WHITE ANSI_BOLD "%d/%d" ANSI_RESET " (%.1f%%)\n\n", score, totalCards, pct);
-    printf("Press any key to return to menu..."); _getch(); hideCursor();
-}
-
-void showStats(void) {
-    clearScreen();
-    printf(ANSI_BOLD ANSI_GREEN "=== LEARNING STATISTICS ===\n\n" ANSI_RESET);
-    printf(ANSI_GRAY "(Press ESC to return to menu)\n\n" ANSI_RESET);
-    
-    if (totalCards == 0) { 
-        printf(ANSI_YELLOW "No statistics available yet!\n\n" ANSI_RESET); 
-        printf("Press any key to return..."); _getch(); return; 
-    }
-
-    int tq = 0, ta = 0; 
-    for (int i = 0; i < totalCards; ++i) { 
-        tq += (int)strlen(deck[i].question); 
-        ta += (int)strlen(deck[i].answer); 
-    }
-    printf(ANSI_CYAN "Learning Progress:\n" ANSI_RESET);
-    printf("Total Cards: " ANSI_WHITE ANSI_BOLD "%d" ANSI_RESET " / %d\n", totalCards, MAX_CARDS);
-    printf("Capacity Used: " ANSI_YELLOW "%.1f%%" ANSI_RESET "\n", (double)totalCards / MAX_CARDS * 100.0);
-    printf("Avg Question Length: %d characters\n", tq / totalCards);
-    printf("Avg Answer Length: %d characters\n\n", ta / totalCards);
-
-    printf("Progress Bar: [");
-    int bars = (totalCards * 25) / MAX_CARDS;
-    for (int i = 0; i < 25; ++i) putchar(i < bars ? '#' : '-');
-    printf("]\n\nPress any key to return to menu (or ESC)..."); 
-    _getch();
-}
-
-// ===== Typing test =====
-void print_colored_char(char c, const char* color) { 
-    printf("%s%c%s", color, c, ANSI_RESET); 
-}
-
-void draw_text(char** words, int num_words, int current_word_index, const char* typed_word, double wpm, double accuracy, int time_left) {
-    clearScreen();
-    for (int i = 0; i < num_words; ++i) {
-        if (i < current_word_index) {
-            printf("%s%s %s", ANSI_GREEN, words[i], ANSI_RESET);
-        } else if (i == current_word_index) {
-            const char* current_word = words[i];
-            int typed_len = (int)strlen(typed_word);
-            int word_len  = (int)strlen(current_word);
-            for (int j = 0; j < typed_len; ++j) {
-                if (j < word_len && typed_word[j] == current_word[j]) 
-                    print_colored_char(current_word[j], ANSI_GREEN);
-                else 
-                    print_colored_char(typed_word[j], ANSI_RED);
-            }
-            if (typed_len < word_len) 
-                printf("%s%s%s", ANSI_GRAY, current_word + typed_len, ANSI_RESET);
-            printf(" ");
+            if (tl<wl2) printf(ANSI_GRAY "%s" ANSI_RESET, w+tl);
+            putchar(' ');
         } else {
-            printf("%s%s %s", ANSI_GRAY, words[i], ANSI_RESET);
+            printf(ANSI_GRAY "%s " ANSI_RESET, w);
         }
+        x += wl;
     }
-    printf("\n\n" ANSI_BOLD "WPM: %.2f | Accuracy: %.2f%% | Time: %ds" ANSI_RESET "\n\n", wpm, accuracy, time_left);
-    printf(ANSI_BOLD "Start typing... " ANSI_GRAY "(Press ESC to exit)" ANSI_RESET);
+    setCursor(c.x+2, c.y+c.h-3); printf(ANSI_BOLD "Start typing…  ESC to return" ANSI_RESET);
 }
-
-void showTypeWriter(void) {
-    clearScreen();
-    const char* word_bank[] = {
-        "the","quick","brown","fox","jumps","over","lazy","dog",
-        "programming","is","fun","keyboard","typing","speed","accuracy",
-        "test","developer","console","interface","language","code",
-        "compiler","library","function","variable","string","loop",
-        "condition","statement","simple","example","application",
-        "system","input","output","character","time","test"
-    };
-    int word_bank_size = sizeof(word_bank)/sizeof(word_bank[0]);
-
+static void showTypeWriterPane(Rect c) {
     srand((unsigned)time(NULL));
-    int num_test_words = 50;
-    char* test_words[50];
-    for (int i = 0; i < num_test_words; ++i) 
-        test_words[i] = (char*)word_bank[rand() % word_bank_size];
+    const char* bank[] = {
+        "the","quick","brown","fox","jumps","over","lazy","dog","programming","is","fun",
+        "keyboard","typing","speed","accuracy","test","developer","console","interface",
+        "language","code","compiler","library","function","variable","string","loop",
+        "condition","statement","simple","example","application","system","input","output",
+        "character","time","test"
+    };
+    int bank_sz = (int)(sizeof(bank)/sizeof(bank[0]));
+    int N = 50; char* words[50];
+    for (int i=0;i<N;i++) words[i] = (char*)bank[rand()%bank_sz];
 
-    int current_word_index = 0; 
-    char typed_word[256] = ""; 
-    int typed_word_len = 0;
-    int correct_chars = 0; 
-    int total_keystrokes = 0; 
-    int test_duration = 60; 
-    int started = 0;
-    clock_t start_time = 0;
-
-    draw_text(test_words, num_test_words, 0, typed_word, 0.0, 0.0, test_duration);
+    int idx=0, typed_len=0, correct=0, keys=0, duration=60, started=0; clock_t start=0;
+    char typed[256] = "";
+    type_draw(c, words, N, idx, typed, 0, 0, duration);
 
     while (1) {
         if (_kbhit()) {
-            if (!started) { start_time = clock(); started = 1; }
             char ch = _getch();
-            if (ch == ESC_KEY) {
-                printf(ANSI_YELLOW "\n\nTyping test cancelled!\n" ANSI_RESET);
-                Sleep(1500);
-                break;
+            if (ch==27) break;
+            if (!started) { started=1; start = clock(); }
+
+            if (ch==' ' && typed_len>0) {
+                int wl=(int)strlen(words[idx]);
+                int cmplen = (typed_len<wl?typed_len:wl);
+                for (int i=0;i<cmplen;i++) if (typed[i]==words[idx][i]) correct++;
+                idx++; typed_len=0; typed[0]='\0'; if (idx>=N) break;
+            } else if (ch==8) {
+                if (typed_len>0) typed[--typed_len]='\0';
+            } else if (ch>=32 && ch<=126) {
+                keys++;
+                if (typed_len < (int)sizeof(typed)-1) { typed[typed_len++]=ch; typed[typed_len]='\0'; }
             }
-            if (ch == ' ' && typed_word_len > 0) {
-                if (current_word_index < num_test_words) {
-                    int word_len = (int)strlen(test_words[current_word_index]);
-                    int len_to_compare = typed_word_len < word_len ? typed_word_len : word_len;
-                    for (int i = 0; i < len_to_compare; ++i) 
-                        if (typed_word[i] == test_words[current_word_index][i]) 
-                            correct_chars++;
-                    current_word_index++; 
-                    typed_word_len = 0; 
-                    typed_word[0] = '\0';
-                }
-            } else if (ch == 8) { // backspace
-                if (typed_word_len > 0) { 
-                    typed_word[--typed_word_len] = '\0'; 
-                }
-            } else if (ch >= 32 && ch <= 126) {
-                total_keystrokes++;
-                if (typed_word_len < (int)sizeof(typed_word) - 1) { 
-                    typed_word[typed_word_len++] = ch; 
-                    typed_word[typed_word_len] = '\0'; 
-                }
-            }
-            if (current_word_index >= num_test_words) break;
-            double elapsed = started ? (double)(clock() - start_time) / CLOCKS_PER_SEC : 0.0;
-            if (elapsed > test_duration) break;
-            double wpm = elapsed > 0 ? ((double)correct_chars / 5.0) * (60.0 / elapsed) : 0.0;
-            double acc = total_keystrokes > 0 ? ((double)correct_chars / (double)total_keystrokes) * 100.0 : 0.0;
-            draw_text(test_words, num_test_words, current_word_index, typed_word, wpm, acc, test_duration - (int)elapsed);
+            double elapsed = started? (double)(clock()-start)/CLOCKS_PER_SEC : 0.0;
+            if (elapsed>duration) break;
+            double wpm = (elapsed>0)? ((double)correct/5.0)*(60.0/elapsed) : 0.0;
+            double acc = (keys>0)? ((double)correct/(double)keys)*100.0 : 0.0;
+            type_draw(c, words, N, idx, typed, wpm, acc, duration-(int)elapsed);
         }
     }
-
-    double elapsed = started ? (double)(clock() - start_time) / CLOCKS_PER_SEC : 1.0;
-    double final_wpm = ((double)correct_chars / 5.0) * (60.0 / elapsed);
-    double final_acc = total_keystrokes > 0 ? ((double)correct_chars / (double)total_keystrokes) * 100.0 : 0.0;
-
-    clearScreen();
-    printf(ANSI_BOLD ANSI_GREEN "===============================================================================\n");
-    printf("                                    Test Complete!                             \n");
-    printf("===============================================================================\n" ANSI_RESET);
-    printf(ANSI_BOLD "Final WPM: %.2f\n" ANSI_RESET, final_wpm);
-    printf("Accuracy:  %.2f%%\n", final_acc);
-    printf("Total Keystrokes: %d\n", total_keystrokes);
-    printf("Correct Keystrokes: %d\n", correct_chars);
-    printf("===============================================================================\n");
-    printf("\nPress any key to return to menu..."); _getch();
+    clearContent(c);
+    setCursor(c.x+2, c.y+2); printf(BOLD GREEN "Test Complete!" RESET);
+    double elapsed = started? (double)(clock()-start)/CLOCKS_PER_SEC : 1.0;
+    double final_wpm = ((double)correct/5.0)*(60.0/elapsed);
+    double final_acc = (keys>0)? ((double)correct/(double)keys)*100.0 : 0.0;
+    setCursor(c.x+2, c.y+4); printf("Final WPM: %.2f", final_wpm);
+    setCursor(c.x+2, c.y+5); printf("Accuracy : %.2f%%", final_acc);
+    setCursor(c.x+2, c.y+7); printf("Press any key to return...");
+    getch();
 }
 
-// ===== Word Guessing Game =====
-void saveGameData(GameData data) {
+/* ===== Flash Cards (pane) ===== */
+static void flashAddPane(Rect c) {
+    showCursor();
+    clearContent(c);
+    printIn(c,0,0,BOLD CYAN "Add New Flash Card" RESET);
+    if (totalCards >= MAX_CARDS) {
+        printIn(c,0,2,RED "Deck full. Press any key..." RESET);
+        getch(); hideCursor(); return;
+    }
+    setCursor(c.x+2, c.y+3);  printf("Question: ");
+    setCursor(c.x+12,c.y+3);  fflush(stdout);
+    fgets(deck[totalCards].question, MAX_LEN, stdin);
+    deck[totalCards].question[strcspn(deck[totalCards].question,"\n")] = 0;
+    if (!deck[totalCards].question[0]) { setCursor(c.x+2,c.y+5); printf(RED "Question empty." RESET); getch(); hideCursor(); return; }
+
+    setCursor(c.x+2, c.y+5);  printf("Answer  : ");
+    setCursor(c.x+12,c.y+5);  fflush(stdout);
+    fgets(deck[totalCards].answer, MAX_LEN, stdin);
+    deck[totalCards].answer[strcspn(deck[totalCards].answer,"\n")] = 0;
+    if (!deck[totalCards].answer[0]) { setCursor(c.x+2,c.y+7); printf(RED "Answer empty." RESET); getch(); hideCursor(); return; }
+
+    totalCards++;
+    setCursor(c.x+2, c.y+7); printf(GREEN "Card added! (%d/%d)" RESET, totalCards, MAX_CARDS);
+    setCursor(c.x+2, c.y+9); printf("Press any key to return...");
+    getch(); hideCursor();
+}
+static void flashViewPane(Rect c) {
+    clearContent(c);
+    printIn(c,0,0,BOLD BLUE "Your Flash Cards" RESET);
+    if (totalCards==0) {
+        printIn(c,0,2,YELLOW "No cards yet. Add some!" RESET);
+        setCursor(c.x+2,c.y+4); printf("Press any key...");
+        getch(); return;
+    }
+    int row = 2;
+    for (int i=0;i<totalCards;i++) {
+        if (c.y+1+row+3 >= c.y+c.h-2) { setCursor(c.x+2,c.y+c.h-3); printf("More... press any key"); getch(); clearContent(c); row = 2; }
+        setCursor(c.x+2,c.y+1+row++); printf(MAGENTA "Card #%d" RESET, i+1);
+        setCursor(c.x+2,c.y+1+row++); printf(WHITE   "Q: %s" RESET, deck[i].question);
+        setCursor(c.x+2,c.y+1+row++); printf(GREEN   "A: %s" RESET, deck[i].answer);
+        row++;
+    }
+    setCursor(c.x+2,c.y+c.h-3); printf("Press any key to return...");
+    getch();
+}
+static void flashQuizPane(Rect c) {
+    showCursor();
+    clearContent(c);
+    printIn(c,0,0,BOLD MAGENTA "Interactive Quiz" RESET);
+    if (totalCards==0) { printIn(c,0,2,YELLOW "No cards to quiz." RESET); setCursor(c.x+2,c.y+4); printf("Press any key..."); getch(); hideCursor(); return; }
+
+    int score=0; char ans[MAX_LEN];
+    for (int i=0;i<totalCards;i++) {
+        clearContent(c);
+        setCursor(c.x+2,c.y+2); printf(YELLOW "Question %d/%d" RESET, i+1,totalCards);
+        setCursor(c.x+2,c.y+4); printf("%s", deck[i].question);
+        setCursor(c.x+2,c.y+6); printf("Your answer: ");
+        setCursor(c.x+16,c.y+6); fflush(stdout);
+        fgets(ans, MAX_LEN, stdin); ans[strcspn(ans,"\n")] = 0;
+
+        if (strcmp(ans, deck[i].answer)==0) { setCursor(c.x+2,c.y+8); printf(GREEN "Correct!" RESET); score++; }
+        else { setCursor(c.x+2,c.y+8); printf(RED "Wrong." RESET); setCursor(c.x+2,c.y+9); printf(GREEN "Ans: %s" RESET, deck[i].answer); }
+
+        if (i < totalCards-1) { setCursor(c.x+2,c.y+c.h-3); printf("Press any key for next..."); getch(); }
+    }
+    double pct = (double)score / totalCards * 100.0;
+    clearContent(c);
+    setCursor(c.x+2,c.y+2); printf(BOLD CYAN "Quiz Results" RESET);
+    setCursor(c.x+2,c.y+4); printf("Score: " WHITE BOLD "%d/%d" RESET " (%.1f%%)", score, totalCards, pct);
+    setCursor(c.x+2,c.y+6);
+    if (pct>=90) printf(GREEN "Excellent! :D" RESET);
+    else if (pct>=70) printf(YELLOW "Great job! :)" RESET);
+    else if (pct>=50) printf(YELLOW "Good effort!" RESET);
+    else printf(CYAN "Keep practicing!" RESET);
+    setCursor(c.x+2,c.y+8); printf("Press any key to return...");
+    getch(); hideCursor();
+}
+static void flashStatsPane(Rect c) {
+    clearContent(c);
+    printIn(c,0,0,BOLD GREEN "Learning Statistics" RESET);
+    if (totalCards==0) { printIn(c,0,2,YELLOW "No statistics yet." RESET); setCursor(c.x+2,c.y+4); printf("Press any key..."); getch(); return; }
+    int totQ=0, totA=0; for (int i=0;i<totalCards;i++){ totQ+=(int)strlen(deck[i].question); totA+=(int)strlen(deck[i].answer);}
+    double used = (double)totalCards / MAX_CARDS * 100.0;
+    setCursor(c.x+2,c.y+2); printf("Total Cards: " WHITE BOLD "%d" RESET " / %d", totalCards, MAX_CARDS);
+    setCursor(c.x+2,c.y+3); printf("Capacity   : %.1f%%", used);
+    setCursor(c.x+2,c.y+4); printf("Avg Q len  : %d", totQ/totalCards);
+    setCursor(c.x+2,c.y+5); printf("Avg A len  : %d", totA/totalCards);
+
+    setCursor(c.x+2,c.y+7); printf("Progress: [");
+    int bars = (totalCards * 25) / MAX_CARDS;
+    for (int i=0;i<25;i++) putchar(i<bars ? '#' : '-');
+    printf("]");
+    if (totalCards>=20) { setCursor(c.x+2,c.y+9); printf(GREEN "Master in the making!" RESET); }
+    else if (totalCards>=10){ setCursor(c.x+2,c.y+9); printf(YELLOW "Great progress!" RESET); }
+    else if (totalCards>=5) { setCursor(c.x+2,c.y+9); printf(CYAN "Nice start!" RESET); }
+    setCursor(c.x+2,c.y+c.h-3); printf("Press any key to return...");
+    getch();
+}
+static void showFlashPane(Rect c) {
+    const char* ops[] = {"Add Card","View Cards","Take Quiz","View Stats","Back"};
+    int sel=0, n=5;
+    while (1) {
+        clearContent(c);
+        printIn(c,0,0,BOLD MAGENTA "Flash Card Education System" RESET);
+        setCursor(c.x+2, c.y+2); printf(YELLOW "Use W/S or \x18/\x19, Enter=select, ESC=back" RESET);
+        for (int i=0;i<n;i++) {
+            setCursor(c.x+2, c.y+4+i);
+            if (i==sel) printf(GREEN "-> " WHITE "%s" RESET, ops[i]);
+            else         printf(CYAN  "   %s" RESET, ops[i]);
+        }
+        int ch = getch();
+        if (ch==27) return;
+        else if (ch==72 || ch=='w' || ch=='W') sel = (sel-1+n)%n;
+        else if (ch==80 || ch=='s' || ch=='S') sel = (sel+1)%n;
+        else if (ch==13) {
+            switch (sel) { case 0: flashAddPane(c); break; case 1: flashViewPane(c); break;
+                           case 2: flashQuizPane(c); break; case 3: flashStatsPane(c); break;
+                           case 4: return; }
+        }
+    }
+}
+
+/* ===== Word Guessing (pane) ===== */
+static void gg_save(GameData data) {
     FILE *fp = fopen("word_game_data.bin", "wb");
     if (!fp) return;
     fwrite(&data, sizeof(GameData), 1, fp);
     fclose(fp);
 }
-
-GameData loadGameData(void) {
-    GameData data; 
+static GameData gg_load(void) {
+    GameData d;
     FILE *fp = fopen("word_game_data.bin", "rb");
     if (!fp) {
         srand((unsigned)time(NULL));
-        const char *wordList[] = {"computer","programming","hangman","developer","keyboard","puzzle"};
-        strcpy(data.target, wordList[rand() % 6]);
-        data.gamesPlayed = 0; 
-        saveGameData(data);
-    } else { 
-        fread(&data, sizeof(GameData), 1, fp); 
-        fclose(fp); 
+        const char *list[] = {"computer","programming","hangman","developer","keyboard","puzzle"};
+        strcpy(d.target, list[rand()%6]);
+        d.gamesPlayed = 0;
+        gg_save(d);
+    } else {
+        fread(&d, sizeof(GameData), 1, fp);
+        fclose(fp);
     }
-    return data;
+    return d;
 }
 
-char getSingleChar(void) {
-    char input[100];
-    while (1) {
-        printf("Enter a letter (or type 'exit'/'ESC' to quit): ");
-        if (fgets(input, sizeof(input), stdin)) {
-            input[strcspn(input, "\n")] = '\0';
-            
-            // Check for exit commands
-            if (strcmp(input, "exit") == 0 || strcmp(input, "EXIT") == 0 || 
-                strcmp(input, "ESC") == 0 || strcmp(input, "esc") == 0) {
-                return '0'; // Special return value for exit
-            }
-            
-            if (strlen(input) == 1 && ((input[0] >= 'a' && input[0] <= 'z') || (input[0] >= 'A' && input[0] <= 'Z'))) {
-                char ch = input[0]; 
-                if (ch >= 'A' && ch <= 'Z') ch = (char)(ch + 32); 
-                return ch;
-            }
-            printf("Invalid input! Please enter a single letter or 'exit'/'ESC' to quit.\n");
-        }
+static void gg_draw(Rect c, const char* title, const char* display, int chances, const int guessed[26]) {
+    clearContent(c);
+    printIn(c,0,0,BOLD CYAN "=== WORD GUESSING GAME ===" ANSI_RESET);
+    if (title && *title) { setCursor(c.x+2,c.y+2); printf("%s", title); }
+
+    setCursor(c.x+2,c.y+4); printf("Word: ");
+    if (display) {
+        for (int i=0; display[i]; ++i) { putchar(display[i]); putchar(' '); }
     }
+    setCursor(c.x+2,c.y+6); printf("Chances left: %d", chances);
+    setCursor(c.x+2,c.y+8); printf("Guessed letters: ");
+    int any=0;
+    if (guessed) {
+        for (int i=0;i<26;i++) if (guessed[i]) { putchar('a'+i); putchar(' '); any=1; }
+    }
+    if (!any) printf("(none)");
 }
 
-void playGuessingGame(void) {
-    clearScreen();
-    printf(ANSI_BOLD ANSI_CYAN "=== WORD GUESSING GAME ===\n\n" ANSI_RESET);
-    printf(ANSI_GRAY "(Type 'ESC' or 'exit' at any time to return to main menu)\n\n" ANSI_RESET);
+static int gg_prompt_int(Rect c, int y, const char* prompt, int defVal) {
+    char line[64];
+    setCursor(c.x+2, y); printf("%s", prompt);
+    setCursor(c.x+2, y+1); printf("> ");
+    fflush(stdout);
+    if (!fgets(line, sizeof(line), stdin)) return defVal;
+    int v=defVal; sscanf(line, "%d", &v);
+    return v;
+}
 
-    GameData game = loadGameData();
-    int wordLen = (int)strlen(game.target);
+/* read a single “letter or exit” from a line at bottom of pane */
+static char gg_get_letter(Rect c) {
+    char buf[64];
+    setCursor(c.x+2, c.y + c.h - 3);
+    for (int i=0;i<c.w-4;i++) putchar(' ');
+    setCursor(c.x+2, c.y + c.h - 3);
+    printf("Enter a letter (or type 'exit'): ");
+    setCursor(c.x+2, c.y + c.h - 2);
+    printf("> ");
+    fflush(stdout);
+    if (!fgets(buf, sizeof(buf), stdin)) return '0';
+    buf[strcspn(buf, "\n")] = 0;
 
-    int choice = 0; 
-    int chances = 0;
-    printf("Select difficulty:\n1. EASY (10 wrong guesses)\n2. MEDIUM (7 wrong guesses)\n3. HARD (5 wrong guesses)\nChoice: ");
-    if (scanf("%d", &choice) != 1) { 
-        while (getchar() != '\n'); 
-        choice = 1; 
+    if (_stricmp(buf, "exit")==0) return '0';
+    if (strlen(buf)==1) {
+        char ch = buf[0];
+        if (ch>='A' && ch<='Z') ch = (char)(ch + 32);
+        if (ch>='a' && ch<='z') return ch;
     }
-    while (getchar() != '\n'); // flush
+    return '\n'; // invalid; loop will re-prompt
+}
 
-    if      (choice == 1) chances = 10;
-    else if (choice == 2) chances = 7;
-    else if (choice == 3) chances = 5;
-    else chances = 10;
+static void showGuessingGamePane(Rect c) {
+    GameData game = gg_load();
+    int L = (int)strlen(game.target);
 
-    char display[30]; 
-    for (int i = 0; i < wordLen; ++i) display[i] = '_'; 
-    display[wordLen] = '\0';
-    int guessed[26] = {0};
+    // difficulty prompt
+    gg_draw(c, "Select difficulty:", NULL, 0, NULL);
+    setCursor(c.x+2, c.y+4);  printf("1. EASY   (10 wrong guesses)");
+    setCursor(c.x+2, c.y+5);  printf("2. MEDIUM (7 wrong guesses)");
+    setCursor(c.x+2, c.y+6);  printf("3. HARD   (5 wrong guesses)");
+    int choice = gg_prompt_int(c, c.y+8, "Choice (1/2/3):", 1);
+
+    int chances = (choice==1)?10 : (choice==2)?7 : (choice==3)?5 : 10;
+
+    char display[32]; for (int i=0;i<L;i++) display[i]='_'; display[L]='\0';
+    int guessed[26]={0};
 
     while (chances > 0) {
-        printf("\n========================================\n");
-        printf("Word: "); 
-        for (int i = 0; i < wordLen; ++i) printf("%c ", display[i]);
-        printf("\nChances left: %d\n", chances);
-        printf("Guessed letters: "); 
-        int any = 0; 
-        for (int i = 0; i < 26; ++i) 
-            if (guessed[i]) { 
-                putchar('a'+i); 
-                putchar(' '); 
-                any = 1; 
-            }
-        if (!any) printf("(none)"); 
-        printf("\n\n");
+        gg_draw(c, "", display, chances, guessed);
 
-        char guess = getSingleChar();
-        if (guess == '0') return; // User chose to exit
-        
-        if (guessed[guess-'a']) { 
-            printf("You already guessed '%c'!\n", guess); 
-            continue; 
+        char guess;
+        do { guess = gg_get_letter(c); } while (guess=='\n'); // re-prompt on invalid
+
+        // exit to menu
+        if (guess=='0') {
+            setCursor(c.x+2, c.y + c.h - 5); printf("\nExiting to menu...");
+            setCursor(c.x+2, c.y + c.h - 3); printf("Press any key to continue...");
+            getch();
+            return;
+        }
+
+        if (guessed[guess-'a']) {
+            setCursor(c.x+2, c.y + c.h - 5); printf("You already guessed '%c'!", guess);
+            continue;
         }
         guessed[guess-'a'] = 1;
 
-        int found = 0; 
-        for (int i = 0; i < wordLen; ++i) 
-            if (game.target[i] == guess) { 
-                display[i] = guess; 
-                found = 1; 
-            }
-        if (found) printf("Good guess! '%c' is in the word.\n", guess);
-        else { 
-            printf("Wrong guess! '%c' is not in the word.\n", guess); 
-            chances--; 
-        }
+        int found=0;
+        for (int i=0;i<L;i++) if (game.target[i]==guess) { display[i]=guess; found=1; }
+        if (!found) chances--;
 
-        if (strcmp(display, game.target) == 0) {
-            printf("\nCongratulations! You guessed the word '%s'!\n", game.target);
+        if (strcmp(display, game.target)==0) {
+            setCursor(c.x+2, c.y + c.h - 5);
+            printf(ANSI_GREEN "Congratulations! You guessed '%s'!" ANSI_RESET, game.target);
+
+            // prepare next target + persist
             srand((unsigned)time(NULL));
-            const char *wordList[] = {"computer","programming","hangman","developer","keyboard","puzzle"};
-            strcpy(game.target, wordList[rand() % 6]);
+            const char *list[] = {"computer","programming","hangman","developer","keyboard","puzzle"};
+            strcpy(game.target, list[rand()%6]);
             game.gamesPlayed++;
-            saveGameData(game);
-            printf("\nPress any key to return to menu..."); _getch();
+            gg_save(game);
+
+            setCursor(c.x+2, c.y + c.h - 3); printf("Press any key to return...");
+            getch();
             return;
         }
     }
 
-    printf("\nOut of chances! The word was '%s'.\n", game.target);
-    game.gamesPlayed++; 
-    saveGameData(game);
-    printf("Press any key to return to menu..."); _getch();
+    // out of chances
+    gg_draw(c, "", display, chances, guessed);
+    setCursor(c.x+2, c.y + c.h - 5);
+    printf(ANSI_RED "Out of chances! The word was '%s'." ANSI_RESET, game.target);
+    game.gamesPlayed++; gg_save(game);
+    setCursor(c.x+2, c.y + c.h - 3); printf("Press any key to return...");
+    getch();
 }
 
-void showGuessingGame(void) {
-    showCursor();
-    playGuessingGame();
-    hideCursor();
-}
+/* ===== Sudoku (pane) ===== */
+int puzzle[SIZE][SIZE] = {
+    {5,3,0,0,7,0,0,0,0},
+    {6,0,0,1,9,5,0,0,0},
+    {0,9,8,0,0,0,0,6,0},
+    {8,0,0,0,6,0,0,0,3},
+    {4,0,0,8,0,3,0,0,1},
+    {7,0,0,0,2,0,0,0,6},
+    {0,6,0,0,0,0,2,8,0},
+    {0,0,0,4,1,9,0,0,5},
+    {0,0,0,0,8,0,0,7,9}
+};
 
-// ===== Sudoku Game =====
-void print_sudoku_header(void) {
-    printf("===================================\n");
-    printf("         TEST YOUR MIND            \n");
-    printf("===================================\n");
-}
+int solution[SIZE][SIZE] = {
+    {5,3,4,6,7,8,9,1,2},
+    {6,7,2,1,9,5,3,4,8},
+    {1,9,8,3,4,2,5,6,7},
+    {8,5,9,7,6,1,4,2,3},
+    {4,2,6,8,5,3,7,9,1},
+    {7,1,3,9,2,4,8,5,6},
+    {9,6,1,5,3,7,2,8,4},
+    {2,8,7,4,1,9,6,3,5},
+    {3,4,5,2,8,6,1,7,9}
+};
 
-void print_sudoku_board(void) {
-    print_sudoku_header();
-    printf("\nSudoku Board (enter row col num  1..9, or '0 0 0' to exit):\n");
-    printf(ANSI_GRAY "(Press ESC during input to return to menu)\n\n" ANSI_RESET);
+int given[SIZE][SIZE];
 
-    for (int i = 0; i < SUDOKU_SIZE; i++) {
-        if (i % 3 == 0) printf("+-------+-------+-------+\n");
-        for (int j = 0; j < SUDOKU_SIZE; j++) {
-            if (j % 3 == 0) printf("| ");
-            if (puzzle[i][j] == 0) printf(". ");
-            else                   printf("%d ", puzzle[i][j]);
+static void printSudokuInPane(Rect c, int mistakes) {
+    clearContent(c);
+    
+    // Title and stats
+    printIn(c, 0, 0, BOLD CYAN "=== SUDOKU CHALLENGE ===" RESET);
+    setCursor(c.x + 2, c.y + 1);
+    printf("Mistakes: %d/%d", mistakes, MAX_MISTAKES);
+    
+    // Draw the sudoku grid
+    int startY = c.y + 3;
+    int startX = c.x + 2;
+    
+    // Top border
+    setCursor(startX, startY);
+    printf("+-------+-------+-------+");
+    
+    for (int i = 0; i < SIZE; i++) {
+        setCursor(startX, startY + 1 + i + i/3);
+        printf("|");
+        
+        for (int j = 0; j < SIZE; j++) {
+            if (puzzle[i][j] == 0) {
+                printf(" .");
+            } else {
+                // Color coding: green for given numbers, white for user input
+                if (given[i][j]) {
+                    printf(GREEN " %d" RESET, puzzle[i][j]);
+                } else {
+                    printf(CYAN " %d" RESET, puzzle[i][j]);
+                }
+            }
+            if ((j + 1) % 3 == 0) printf(" |");
         }
-        printf("|\n");
+        
+        // Horizontal separator every 3 rows
+        if ((i + 1) % 3 == 0) {
+            setCursor(startX, startY + 2 + i + i/3);
+            printf("+-------+-------+-------+");
+        }
     }
-    printf("+-------+-------+-------+\n");
+    
+    // Instructions
+    setCursor(c.x + 2, c.y + c.h - 4);
+    printf(YELLOW "Enter row col val (e.g., '3 5 7')" RESET);
+    setCursor(c.x + 2, c.y + c.h - 3);
+    printf(YELLOW "Type 'quit' to return to menu" RESET);
 }
 
-int is_sudoku_complete(void) {
-    for (int i = 0; i < SUDOKU_SIZE; i++)
-        for (int j = 0; j < SUDOKU_SIZE; j++)
+static int isComplete() {
+    for (int i = 0; i < SIZE; i++)
+        for (int j = 0; j < SIZE; j++)
             if (puzzle[i][j] == 0) return 0;
     return 1;
 }
 
-void flush_line(void) {
-    int c;
-    while ((c = getchar()) != '\n' && c != EOF) { /* discard */ }
-}
-
-void play_sudoku_game(void) {
+static void showSudokuPane(Rect c) {
+    showCursor();
     int mistakes = 0;
-    printf(ANSI_YELLOW "Starting Sudoku game! You can exit anytime by entering '0 0 0' or pressing ESC.\n\n" ANSI_RESET);
-
-    while (!is_sudoku_complete()) {
-        print_sudoku_board();
-
-        printf("\nEnter row col num (1-9). Enter 0 0 0 to quit.\n> ");
-
-        // Enhanced input with ESC detection
-        char input_line[100];
-        int input_index = 0;
-        
-        // Read input character by character to detect ESC
-        while (input_index < sizeof(input_line) - 1) {
-            if (_kbhit()) {
-                int ch = _getch();
-                if (ch == ESC_KEY) {
-                    printf(ANSI_YELLOW "\n\nReturning to menu... (ESC pressed)\n" ANSI_RESET);
-                    Sleep(1000);
-                    return;
-                } else if (ch == 13) { // Enter
-                    input_line[input_index] = '\0';
-                    printf("\n");
-                    break;
-                } else if (ch == 8 && input_index > 0) { // Backspace
-                    input_index--;
-                    printf("\b \b");
-                } else if (ch >= 32 && ch <= 126) { // Printable characters
-                    input_line[input_index++] = ch;
-                    printf("%c", ch);
-                }
-            }
-        }
-
-        int r, c, n;
-        if (sscanf(input_line, "%d %d %d", &r, &c, &n) != 3) {
-            printf("Invalid input. Please enter three numbers (row col num) or 0 0 0 to quit.\n");
-            continue;
-        }
-        
-        if (r == 0 && c == 0 && n == 0) {
-            printf("Returning to menu...\n");
-            return;
-        }
-
-        // Convert to 0-based indices
-        r--; c--;
-
-        if (r < 0 || r >= SUDOKU_SIZE || c < 0 || c >= SUDOKU_SIZE || n < 1 || n > 9) {
-            printf("Out of range. Use 1..9 for row, col, and number.\n");
-            continue;
-        }
-
-        if (given[r][c] != 0) {
-            printf("That cell is fixed in the original puzzle.\n");
-            continue;
-        }
-
-        if (solution[r][c] == n) {
-            puzzle[r][c] = n;
-            printf(ANSI_GREEN "✓ Correct!\n" ANSI_RESET);
-        } else {
-            mistakes++;
-            printf(ANSI_RED "✗ Incorrect. Mistakes: %d/%d\n" ANSI_RESET, mistakes, MAX_MISTAKES);
-            if (mistakes >= MAX_MISTAKES) {
-                print_sudoku_board();
-                printf(ANSI_RED "\nYou made %d mistakes. Game over!\n" ANSI_RESET, MAX_MISTAKES);
-                printf("The correct solution will be displayed:\n\n");
-                
-                // Show solution
-                for (int i = 0; i < SUDOKU_SIZE; i++) {
-                    if (i % 3 == 0) printf("+-------+-------+-------+\n");
-                    for (int j = 0; j < SUDOKU_SIZE; j++) {
-                        if (j % 3 == 0) printf("| ");
-                        printf("%d ", solution[i][j]);
-                    }
-                    printf("|\n");
-                }
-                printf("+-------+-------+-------+\n");
-                printf("\nPress any key to return to menu..."); _getch();
-                return;
-            }
-        }
-    }
-
-    print_sudoku_board();
-    printf(ANSI_BOLD ANSI_GREEN "\n🎉 Congratulations! You solved the Sudoku! 🎉\n" ANSI_RESET);
-    printf("Press any key to return to menu..."); _getch();
-}
-
-void sudoku_menu(void) {
-    int selected = 0;
-    const int numOptions = 2;
+    
+    // Mark given cells
+    for (int i = 0; i < SIZE; i++)
+        for (int j = 0; j < SIZE; j++)
+            given[i][j] = (puzzle[i][j] != 0);
     
     while (1) {
-        clearScreen();
-        print_sudoku_header();
-        printf(ANSI_GRAY "\n(Press ESC at any time to return to main menu)\n\n" ANSI_RESET);
+        printSudokuInPane(c, mistakes);
         
-        const char* options[] = {"Play Game", "Back to Main Menu"};
-        for (int i = 0; i < numOptions; ++i) {
-            if (i == selected) printf(ANSI_GREEN "-> " ANSI_WHITE "%s" ANSI_RESET "\n", options[i]);
-            else               printf(ANSI_CYAN  "   %s" ANSI_RESET "\n", options[i]);
+        // Check win condition
+        if (isComplete()) {
+            setCursor(c.x + 2, c.y + c.h - 2);
+            printf(GREEN BOLD "?? Congratulations! You solved it!" RESET);
+            setCursor(c.x + 2, c.y + c.h - 1);
+            printf("Press any key to return...");
+            getch();
+            hideCursor();
+            return;
         }
         
-        printf(ANSI_YELLOW "\nUse arrows or WASD to navigate, ENTER to select, ESC to go back\n" ANSI_RESET);
+        // Check loss condition
+        if (mistakes >= MAX_MISTAKES) {
+            setCursor(c.x + 2, c.y + c.h - 2);
+            printf(RED BOLD "? Game Over! Too many mistakes." RESET);
+            setCursor(c.x + 2, c.y + c.h - 1);
+            printf("Press any key to return...");
+            getch();
+            hideCursor();
+            return;
+        }
         
-        int key = _getch();
-        switch (key) {
-            case 72: case 'w': case 'W': selected = (selected - 1 + numOptions) % numOptions; break; // up
-            case 80: case 's': case 'S': selected = (selected + 1) % numOptions; break; // down
-            case ESC_KEY: return; // ESC
-            case 13: // Enter
-                if (selected == 0) {
-                    play_sudoku_game();
-                } else {
-                    return;
-                }
-                break;
+        // Get input
+        char input[64];
+        setCursor(c.x + 2, c.y + c.h - 2);
+        printf("Input: ");
+        fflush(stdout);
+        
+        if (!fgets(input, sizeof(input), stdin)) {
+            hideCursor();
+            return;
+        }
+        
+        // Remove newline
+        input[strcspn(input, "\n")] = 0;
+        
+        // Check for quit
+        if (strcmp(input, "quit") == 0) {
+            hideCursor();
+            return;
+        }
+        
+        // Parse input
+        int row, col, val;
+        if (sscanf(input, "%d %d %d", &row, &col, &val) != 3) {
+            setCursor(c.x + 2, c.y + c.h - 1);
+            printf(RED "Invalid format! Try: row col value" RESET);
+            getch();
+            continue;
+        }
+        
+        // Validate ranges
+        if (row < 1 || row > 9 || col < 1 || col > 9 || val < 0 || val > 9) {
+            setCursor(c.x + 2, c.y + c.h - 1);
+            printf(RED "Invalid range! Row/col: 1-9, value: 0-9" RESET);
+            getch();
+            continue;
+        }
+        
+        // Convert to 0-based indexing
+        row--; col--;
+        
+        // Check if cell is given/fixed
+        if (given[row][col]) {
+            setCursor(c.x + 2, c.y + c.h - 1);
+            printf(RED "Cannot modify given number!" RESET);
+            getch();
+            continue;
+        }
+        
+        // Process move
+        if (val == 0) {
+            // Clear cell
+            puzzle[row][col] = 0;
+        } else if (solution[row][col] == val) {
+            // Correct move
+            puzzle[row][col] = val;
+        } else {
+            // Wrong move
+            mistakes++;
+            setCursor(c.x + 2, c.y + c.h - 1);
+            printf(RED "? Wrong number! Mistakes: %d/%d" RESET, mistakes, MAX_MISTAKES);
+            getch();
         }
     }
 }
 
-void showChatbot(void) {
-    showCursor();
-    
-    // Initialize the given array with original puzzle state
-    for (int i = 0; i < SUDOKU_SIZE; i++)
-        for (int j = 0; j < SUDOKU_SIZE; j++)
-            given[i][j] = puzzle[i][j];
-    
-    sudoku_menu();
-    hideCursor();
+
+/* ===== Generic Coming Soon pane ===== */
+static void showComingSoon(Rect c, const char* title, const char* body) {
+    clearContent(c);
+    printIn(c, 0, 0, BOLD CYAN);
+    printIn(c, 0, 0, title);
+    printIn(c, 0, 0, RESET);
+
+    printIn(c, 0, 2, YELLOW "Coming Soon!" RESET);
+    if (body && *body) printIn(c, 0, 4, body);
+
+    setCursor(c.x+2, c.y + c.h - 3);
+    printf("Press any key to return...");
+    getch();
 }
 
-void showFlash(void) {
-    int selected = 0; 
-    const int numOptions = 5; 
-    int running = 1; 
-    hideCursor();
-    
-    while (running) {
-        clearScreen();
-        displayHeaderFlash();
-        displayMenuFlash(selected);
-        printf("\n" ANSI_YELLOW "Use arrows or WASD to navigate, ENTER to select, ESC to go back\n" ANSI_RESET);
-        
-        int key = _getch();
-        switch (key) {
-            case 72: case 'w': case 'W': selected = (selected - 1 + numOptions) % numOptions; break; // up
-            case 80: case 's': case 'S': selected = (selected + 1) % numOptions; break; // down
-            case ESC_KEY: running = 0; break; // ESC
-            case 13: // Enter
-                if      (selected == 0) showAddCard();
-                else if (selected == 1) showViewCards();
-                else if (selected == 2) showQuiz();
-                else if (selected == 3) showStats();
-                else running = 0;
-                break;
-        }
-    }
-}
-
-// ===== Entry point =====
+/* ===== Main ===== */
 int main(void) {
-    enableVTMode();
+    // enable ANSI VT on Windows
+    HANDLE hout = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD mode = 0; if (GetConsoleMode(hout, &mode)) {
+        SetConsoleMode(hout, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+    }
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8); // set input code page
+
     hideCursor();
 
-    int selected = 0; 
-    const int numOptions = 5; 
-    int running = 1;
-    
-    while (running) {
-        clearScreen();
-        displayHeader();
-        displayMenuMain(selected);
-        printf("\n" ANSI_YELLOW "Use arrows or WASD to navigate, ENTER to select, ESC to exit\n" ANSI_RESET);
-        
-        int key = _getch();
-        switch (key) {
-            case 72: case 'w': case 'W': selected = (selected - 1 + numOptions) % numOptions; break;
-            case 80: case 's': case 'S': selected = (selected + 1) % numOptions; break;
-            case ESC_KEY: running = 0; break;
-            case 13:
-                if      (selected == 0) showTypeWriter();
-                else if (selected == 1) showFlash();
-                else if (selected == 2) showGuessingGame();
-                else if (selected == 3) showChatbot();
-                else running = 0;
-                break;
+    Rect sidebar, content;
+    drawAppChrome(&sidebar, &content);
+
+    // Updated: 7 options now (added Algorithm Mode, Redirect System)
+    int selected = 0, numOptions = 7;
+    drawSidebar(sidebar, selected);
+
+    while (1) {
+        int ch = getch();
+        if (ch == 27) { // ESC
+            showCursor(); fastClear();
+            printf(RED "Goodbye!\n" RESET);
+            return 0;
+        } else if (ch == 72 || ch=='w' || ch=='W') {
+            selected = (selected - 1 + numOptions) % numOptions;
+            drawSidebar(sidebar, selected);
+        } else if (ch == 80 || ch=='s' || ch=='S') {
+            selected = (selected + 1) % numOptions;
+            drawSidebar(sidebar, selected);
+        } else if (ch == 13) {
+            switch (selected) {
+                case 0: showTypeWriterPane(content);  break;
+                case 1: showFlashPane(content);       break;
+                case 2: showGuessingGamePane(content);break;
+                case 3: showSudokuPane(content); break;
+                case 4: // Algorithm Mode (Coming Soon)
+                    showComingSoon(content, "Algorithm Mode", "A future mode for auto-solving and generating puzzles.");
+                    break;
+                case 5: 
+                    system("start \"\" \".\\allphysics.html\"");
+                     
+                    break;
+                case 6:
+                    showCursor(); fastClear();
+                    printf(RED "Thanks for using our menu system!\n" RESET);
+                    return 0;
+            }
+            // redraw after returning from a pane
+            drawAppChrome(&sidebar, &content);
+            drawSidebar(sidebar, selected);
         }
     }
-
-    showCursor();
-    showExitMessage();
-    return 0;
 }
+
