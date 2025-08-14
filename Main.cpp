@@ -36,6 +36,13 @@
 #define MAX_CARDS 100
 #define MAX_LEN  200
 
+// Algorithm visualizer constants
+#define BUBBLE_SORT_SIZE 30
+#define MAZE_ROWS 15
+#define MAZE_COLS 30
+#define FPS_DEFAULT 5
+#define FPS_MIN 1
+#define FPS_MAX 20
 
 typedef struct {
     char target[30];
@@ -46,6 +53,9 @@ typedef struct {
 typedef struct { char question[MAX_LEN]; char answer[MAX_LEN]; } FlashCard;
 static FlashCard deck[MAX_CARDS];
 static int totalCards = 0;
+
+// Algorithm visualizer data
+char maze[MAZE_ROWS][MAZE_COLS];
 
 /* ===== Layout helpers ===== */
 typedef struct { int x, y, w, h; } Rect;
@@ -100,6 +110,13 @@ static void printIn(Rect r, int px, int py, const char* s) {
     fputs(s, stdout);
 }
 
+// Algorithm visualizer helper
+static void delay_fps(int fps) {
+    if (fps <= 0) return;
+    long ms_delay = 1000 / fps;
+    Sleep(ms_delay);
+}
+
 /* ===== Chrome ===== */
 static void drawAppChrome(Rect* outSidebar, Rect* outContent) {
     int C,R; getConsoleSize(&C,&R);
@@ -109,7 +126,7 @@ static void drawAppChrome(Rect* outSidebar, Rect* outContent) {
     printf(BOLD MAGENTA);
     setCursor(0,0);
     for (int i=0;i<C;i++) putchar(' ');
-    setCursor((C-24)/2, 0); printf("Edutainment");
+    setCursor((C-24)/2, 0); printf("Edutainment System");
     printf(RESET);
 
     Rect sidebar = (Rect){0,1,MENU_W,R-1};
@@ -122,13 +139,13 @@ static void drawAppChrome(Rect* outSidebar, Rect* outContent) {
     if (outContent) *outContent = content;
 }
 static void drawSidebar(Rect sidebar, int selected) {
-    // Added two options: Algorithm Mode, Redirect System (both "Coming Soon")
     const char* opts[] = {
         "Type Writer",
         "Flash Cards",
         "Word Guessing",
         "Sudoku",
-        "Algorithm Mode ",
+        "Bubble Sort",
+        "Maze Solver",
         "Simulation",
         "Exit"
     };
@@ -398,7 +415,6 @@ static int gg_prompt_int(Rect c, int y, const char* prompt, int defVal) {
     return v;
 }
 
-/* read a single “letter or exit” from a line at bottom of pane */
 static char gg_get_letter(Rect c) {
     char buf[64];
     setCursor(c.x+2, c.y + c.h - 3);
@@ -417,14 +433,13 @@ static char gg_get_letter(Rect c) {
         if (ch>='A' && ch<='Z') ch = (char)(ch + 32);
         if (ch>='a' && ch<='z') return ch;
     }
-    return '\n'; // invalid; loop will re-prompt
+    return '\n';
 }
 
 static void showGuessingGamePane(Rect c) {
     GameData game = gg_load();
     int L = (int)strlen(game.target);
 
-    // difficulty prompt
     gg_draw(c, "Select difficulty:", NULL, 0, NULL);
     setCursor(c.x+2, c.y+4);  printf("1. EASY   (10 wrong guesses)");
     setCursor(c.x+2, c.y+5);  printf("2. MEDIUM (7 wrong guesses)");
@@ -440,9 +455,8 @@ static void showGuessingGamePane(Rect c) {
         gg_draw(c, "", display, chances, guessed);
 
         char guess;
-        do { guess = gg_get_letter(c); } while (guess=='\n'); // re-prompt on invalid
+        do { guess = gg_get_letter(c); } while (guess=='\n');
 
-        // exit to menu
         if (guess=='0') {
             setCursor(c.x+2, c.y + c.h - 5); printf("\nExiting to menu...");
             setCursor(c.x+2, c.y + c.h - 3); printf("Press any key to continue...");
@@ -464,7 +478,6 @@ static void showGuessingGamePane(Rect c) {
             setCursor(c.x+2, c.y + c.h - 5);
             printf(ANSI_GREEN "Congratulations! You guessed '%s'!" ANSI_RESET, game.target);
 
-            // prepare next target + persist
             srand((unsigned)time(NULL));
             const char *list[] = {"computer","programming","hangman","developer","keyboard","puzzle"};
             strcpy(game.target, list[rand()%6]);
@@ -477,7 +490,6 @@ static void showGuessingGamePane(Rect c) {
         }
     }
 
-    // out of chances
     gg_draw(c, "", display, chances, guessed);
     setCursor(c.x+2, c.y + c.h - 5);
     printf(ANSI_RED "Out of chances! The word was '%s'." ANSI_RESET, game.target);
@@ -572,7 +584,6 @@ static void showSudokuPane(Rect c) {
     showCursor();
     int mistakes = 0;
     
-    // Mark given cells
     for (int i = 0; i < SIZE; i++)
         for (int j = 0; j < SIZE; j++)
             given[i][j] = (puzzle[i][j] != 0);
@@ -583,7 +594,7 @@ static void showSudokuPane(Rect c) {
         // Check win condition
         if (isComplete()) {
             setCursor(c.x + 2, c.y + c.h - 2);
-            printf(GREEN BOLD "?? Congratulations! You solved it!" RESET);
+            printf(GREEN BOLD "🎉 Congratulations! You solved it!" RESET);
             setCursor(c.x + 2, c.y + c.h - 1);
             printf("Press any key to return...");
             getch();
@@ -594,7 +605,7 @@ static void showSudokuPane(Rect c) {
         // Check loss condition
         if (mistakes >= MAX_MISTAKES) {
             setCursor(c.x + 2, c.y + c.h - 2);
-            printf(RED BOLD "? Game Over! Too many mistakes." RESET);
+            printf(RED BOLD "💀 Game Over! Too many mistakes." RESET);
             setCursor(c.x + 2, c.y + c.h - 1);
             printf("Press any key to return...");
             getch();
@@ -650,23 +661,273 @@ static void showSudokuPane(Rect c) {
             continue;
         }
         
-        // Process move
         if (val == 0) {
-            // Clear cell
             puzzle[row][col] = 0;
         } else if (solution[row][col] == val) {
-            // Correct move
+
             puzzle[row][col] = val;
         } else {
-            // Wrong move
             mistakes++;
             setCursor(c.x + 2, c.y + c.h - 1);
-            printf(RED "? Wrong number! Mistakes: %d/%d" RESET, mistakes, MAX_MISTAKES);
+            printf(RED "❌ Wrong number! Mistakes: %d/%d" RESET, mistakes, MAX_MISTAKES);
             getch();
         }
     }
 }
 
+/* ===== Bubble Sort Visualization (pane) ===== */
+static void print_bubble_sort_array_in_pane(Rect c, int arr[], int n, int idx1, int idx2, int fps) {
+    clearContent(c);
+    printIn(c, 0, 0, BOLD CYAN "=== BUBBLE SORT VISUALIZATION ===" RESET);
+    
+    setCursor(c.x + 2, c.y + 2);
+    printf("FPS: %d | Sorting %d elements", fps, n);
+    
+    setCursor(c.x + 2, c.y + 3);
+    printf("----------------------------------");
+    
+    int x = c.x + 2, y = c.y + 5;
+    setCursor(x, y);
+    
+    for (int i = 0; i < n; i++) {
+        if (i == idx1 || i == idx2) {
+            printf(YELLOW "[%2d]" RESET " ", arr[i]);
+        } else {
+            printf("%2d ", arr[i]);
+        }
+        
+        if ((i + 1) % 15 == 0 && i < n - 1) {
+            y++;
+            setCursor(x, y);
+        }
+    }
+    
+    setCursor(c.x + 2, c.y + c.h - 4);
+    printf(YELLOW "Comparing elements at positions %d and %d", idx1, idx2);
+    setCursor(c.x + 2, c.y + c.h - 3);
+    printf(YELLOW "Press ESC to stop, any other key to continue..." RESET);
+}
+
+static void bubble_sort_visualize_in_pane(Rect c, int arr[], int n, int fps) {
+    int i, j, temp;
+    
+    for (i = 0; i < n - 1; i++) {
+        for (j = 0; j < n - i - 1; j++) {
+            print_bubble_sort_array_in_pane(c, arr, n, j, j + 1, fps);
+            if (_kbhit()) {
+                char ch = _getch();
+                if (ch == 27) return; // ESC to stop
+            }
+            
+            delay_fps(fps);
+
+            if (arr[j] > arr[j + 1]) {
+                temp = arr[j];
+                arr[j] = arr[j + 1];
+                arr[j + 1] = temp;
+                print_bubble_sort_array_in_pane(c, arr, n, j, j + 1, fps);
+                delay_fps(fps);
+            }
+        }
+    }
+
+    clearContent(c);
+    printIn(c, 0, 0, BOLD GREEN "=== SORTING COMPLETE ===" RESET);
+    
+    setCursor(c.x + 2, c.y + 2);
+    printf("Final sorted array:");
+    
+    int x = c.x + 2, y = c.y + 4;
+    setCursor(x, y);
+    
+    for (int k = 0; k < n; k++) {
+        printf(GREEN "%2d" RESET " ", arr[k]);
+        if ((k + 1) % 15 == 0 && k < n - 1) {
+            y++;
+            setCursor(x, y);
+        }
+    }
+    
+    setCursor(c.x + 2, c.y + c.h - 3);
+    printf("Sorting complete. Press any key to continue...");
+    getch();
+}
+
+static void showBubbleSortPane(Rect c) {
+    clearContent(c);
+    printIn(c, 0, 0, BOLD MAGENTA "Bubble Sort Visualization" RESET);
+    
+    showCursor();
+    setCursor(c.x + 2, c.y + 2);
+    printf("Enter desired FPS (1-%d): ", FPS_MAX);
+    char input[32];
+    fgets(input, sizeof(input), stdin);
+    int fps = FPS_DEFAULT;
+    sscanf(input, "%d", &fps);
+    if (fps < FPS_MIN || fps > FPS_MAX) fps = FPS_DEFAULT;
+    hideCursor();
+    
+    int arr[BUBBLE_SORT_SIZE];
+    srand((unsigned)time(NULL));
+    for (int i = 0; i < BUBBLE_SORT_SIZE; i++) {
+        arr[i] = rand() % 100;
+    }
+    
+    bubble_sort_visualize_in_pane(c, arr, BUBBLE_SORT_SIZE, fps);
+}
+
+/* ===== Maze Solver Visualization (pane) ===== */
+static void generate_maze(int x, int y) {
+    static int dx[] = {0, 0, 1, -1};
+    static int dy[] = {1, -1, 0, 0};
+    int i;
+    int rand_dir;
+    int nx, ny;
+     for(i = 0; i < 4; i++) {
+        rand_dir = rand() % 4;
+        int temp_dx = dx[i];
+        int temp_dy = dy[i];
+        dx[i] = dx[rand_dir];
+        dy[i] = dy[rand_dir];
+        dx[rand_dir] = temp_dx;
+        dy[rand_dir] = temp_dy;
+    }
+
+    for(i = 0; i < 4; i++) {
+        nx = x + dx[i] * 2;
+        ny = y + dy[i] * 2;
+        if(nx >= 0 && nx < MAZE_ROWS && ny >= 0 && ny < MAZE_COLS && maze[nx][ny] == '#') {
+            maze[x + dx[i]][y + dy[i]] = ' ';
+            maze[nx][ny] = ' ';
+            generate_maze(nx, ny);
+        }
+    }
+}
+
+static void print_maze_in_pane(Rect c, int fps) {
+    clearContent(c);
+    printIn(c, 0, 0, BOLD CYAN "=== MAZE SOLVER (DFS) ===" RESET);
+    
+    setCursor(c.x + 2, c.y + 1);
+    printf("FPS: %d | S=Start, E=End, *=Exploring, .=Solution", fps);
+    
+    int startY = c.y + 3;
+    int startX = c.x + 2;
+    
+    for (int i = 0; i < MAZE_ROWS; i++) {
+        setCursor(startX, startY + i);
+        for (int j = 0; j < MAZE_COLS; j++) {
+            if (maze[i][j] == 'S') {
+                printf(GREEN "S" RESET);
+            } else if (maze[i][j] == 'E') {
+                printf(RED "E" RESET);
+            } else if (maze[i][j] == ' ') {
+                printf(" ");
+            } else if (maze[i][j] == '#') {
+                printf(BLUE "#" RESET);
+            } else if (maze[i][j] == '*') { 
+                printf(YELLOW "*" RESET);
+            } else if (maze[i][j] == '.') { 
+                printf(GREEN "." RESET);
+            } else {
+                printf("%c", maze[i][j]);
+            }
+        }
+    }
+    
+    setCursor(c.x + 2, c.y + c.h - 3);
+    printf(YELLOW "Press ESC to stop solving..." RESET);
+}
+
+static int solve_maze_dfs_in_pane(Rect c, int x, int y, int fps) {
+    if (x < 0 || x >= MAZE_ROWS || y < 0 || y >= MAZE_COLS) return 0;
+    if (maze[x][y] == 'E') return 1; 
+    if (maze[x][y] == '#' || maze[x][y] == '*') return 0;
+
+    maze[x][y] = '*'; 
+    print_maze_in_pane(c, fps);
+    
+    if (_kbhit()) {
+        char ch = _getch();
+        if (ch == 27) return 0;
+    }
+    
+    delay_fps(fps);
+    
+
+    if (solve_maze_dfs_in_pane(c, x + 1, y, fps)) {
+        maze[x][y] = '.'; 
+        return 1;
+    }
+    if (solve_maze_dfs_in_pane(c, x - 1, y, fps)) {
+        maze[x][y] = '.';
+        return 1;
+    }
+    if (solve_maze_dfs_in_pane(c, x, y + 1, fps)) {
+        maze[x][y] = '.';
+        return 1;
+    }
+    if (solve_maze_dfs_in_pane(c, x, y - 1, fps)) {
+        maze[x][y] = '.';
+        return 1;
+    }
+
+    maze[x][y] = ' '; // Backtrack
+    print_maze_in_pane(c, fps);
+    delay_fps(fps);
+    
+    return 0;
+}
+
+static void showMazeSolverPane(Rect c) {
+    clearContent(c);
+    printIn(c, 0, 0, BOLD MAGENTA "Maze Solver Visualization" RESET);
+    
+    // Get FPS from user
+    showCursor();
+    setCursor(c.x + 2, c.y + 2);
+    printf("Enter desired FPS (1-%d): ", FPS_MAX);
+    char input[32];
+    fgets(input, sizeof(input), stdin);
+    int fps = FPS_DEFAULT;
+    sscanf(input, "%d", &fps);
+    if (fps < FPS_MIN || fps > FPS_MAX) fps = FPS_DEFAULT;
+    hideCursor();
+    
+    // Initialize maze with walls
+    for (int i = 0; i < MAZE_ROWS; i++) {
+        for (int j = 0; j < MAZE_COLS; j++) {
+            maze[i][j] = '#';
+        }
+    }
+    
+    srand((unsigned)time(NULL));
+    
+    // Generate maze
+    maze[1][1] = ' '; // Start generation from (1,1)
+    generate_maze(1, 1);
+    
+    // Set start and end points
+    maze[1][1] = 'S';
+    maze[MAZE_ROWS - 2][MAZE_COLS - 2] = 'E';
+
+    int solved = solve_maze_dfs_in_pane(c, 1, 1, fps);
+
+    clearContent(c);
+    if (solved) {
+        printIn(c, 0, 0, BOLD GREEN "=== MAZE SOLVED! ===" RESET);
+        setCursor(c.x + 2, c.y + 2);
+        printf("The maze has been solved successfully!");
+    } else {
+        printIn(c, 0, 0, BOLD YELLOW "=== MAZE SOLVING STOPPED ===" RESET);
+        setCursor(c.x + 2, c.y + 2);
+        printf("Maze solving was interrupted or no solution found.");
+    }
+    
+    setCursor(c.x + 2, c.y + 4);
+    printf("Press any key to continue...");
+    getch();
+}
 
 /* ===== Generic Coming Soon pane ===== */
 static void showComingSoon(Rect c, const char* title, const char* body) {
@@ -698,8 +959,8 @@ int main(void) {
     Rect sidebar, content;
     drawAppChrome(&sidebar, &content);
 
-    // Updated: 7 options now (added Algorithm Mode, Redirect System)
-    int selected = 0, numOptions = 7;
+ 
+    int selected = 0, numOptions = 8;
     drawSidebar(sidebar, selected);
 
     while (1) {
@@ -716,26 +977,22 @@ int main(void) {
             drawSidebar(sidebar, selected);
         } else if (ch == 13) {
             switch (selected) {
-                case 0: showTypeWriterPane(content);  break;
-                case 1: showFlashPane(content);       break;
-                case 2: showGuessingGamePane(content);break;
-                case 3: showSudokuPane(content); break;
-                case 4: // Algorithm Mode (Coming Soon)
-                    showComingSoon(content, "Algorithm Mode", "A future mode for auto-solving and generating puzzles.");
-                    break;
-                case 5: 
+                case 0: showTypeWriterPane(content);     break;
+                case 1: showFlashPane(content);          break;
+                case 2: showGuessingGamePane(content);   break;
+                case 3: showSudokuPane(content);         break;
+                case 4: showBubbleSortPane(content);     break;
+                case 5: showMazeSolverPane(content);     break;
+                case 6: 
                     system("start \"\" \".\\allphysics.html\"");
-                     
                     break;
-                case 6:
+                case 7:
                     showCursor(); fastClear();
-                    printf(RED "Thanks for using our menu system!\n" RESET);
+                    printf(RED "Thanks for using our educational system!\n" RESET);
                     return 0;
             }
-            // redraw after returning from a pane
             drawAppChrome(&sidebar, &content);
             drawSidebar(sidebar, selected);
         }
     }
 }
-
