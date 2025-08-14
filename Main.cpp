@@ -923,10 +923,9 @@ static void showMazeSolverPane(Rect c) {
     srand((unsigned)time(NULL));
     
     // Generate maze
-    maze[1][1] = ' '; // Start generation from (1,1)
+    maze[1][1] = ' '; 
     generate_maze(1, 1);
     
-    // Set start and end points
     maze[1][1] = 'S';
     maze[MAZE_ROWS - 2][MAZE_COLS - 2] = 'E';
 
@@ -965,20 +964,18 @@ static void showComingSoon(Rect c, const char* title, const char* body) {
 
 /* ===== Main ===== */
 int main(void) {
-    // enable ANSI VT on Windows
     HANDLE hout = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD mode = 0; if (GetConsoleMode(hout, &mode)) {
         SetConsoleMode(hout, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
     }
     SetConsoleOutputCP(CP_UTF8);
-    SetConsoleCP(CP_UTF8); // set input code page
+    SetConsoleCP(CP_UTF8); 
 
     hideCursor();
 
     Rect sidebar, content;
     drawAppChrome(&sidebar, &content);
 
-    // Updated: 8 options now (added Bubble Sort, Maze Solver)
     int selected = 0, numOptions = 8;
     drawSidebar(sidebar, selected);
 
