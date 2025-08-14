@@ -203,7 +203,7 @@ static void showTypeWriterPane(Rect c) {
     int N = 50; char* words[50];
     for (int i=0;i<N;i++) words[i] = (char*)bank[rand()%bank_sz];
 
-    int idx=0, typed_len=0, correct=0, keys=0, duration=60, started=0; clock_t start=0;
+    int idx=0, typed_len=0, correct=0, keys=0, duration=30, started=0; clock_t start=0;
     char typed[256] = "";
     type_draw(c, words, N, idx, typed, 0, 0, duration);
 
@@ -226,7 +226,7 @@ static void showTypeWriterPane(Rect c) {
             }
             double elapsed = started? (double)(clock()-start)/CLOCKS_PER_SEC : 0.0;
             if (elapsed>duration) break;
-            double wpm = (elapsed>0)? ((double)correct/5.0)*(60.0/elapsed) : 0.0;
+            double wpm = (elapsed>0)? ((double)correct/5.0)*(30.0/elapsed) : 0.0;
             double acc = (keys>0)? ((double)correct/(double)keys)*100.0 : 0.0;
             type_draw(c, words, N, idx, typed, wpm, acc, duration-(int)elapsed);
         }
@@ -234,7 +234,7 @@ static void showTypeWriterPane(Rect c) {
     clearContent(c);
     setCursor(c.x+2, c.y+2); printf(BOLD GREEN "Test Complete!" RESET);
     double elapsed = started? (double)(clock()-start)/CLOCKS_PER_SEC : 1.0;
-    double final_wpm = ((double)correct/5.0)*(60.0/elapsed);
+    double final_wpm = ((double)correct/5.0)*(30.0/elapsed);
     double final_acc = (keys>0)? ((double)correct/(double)keys)*100.0 : 0.0;
     setCursor(c.x+2, c.y+4); printf("Final WPM: %.2f", final_wpm);
     setCursor(c.x+2, c.y+5); printf("Accuracy : %.2f%%", final_acc);
@@ -584,6 +584,7 @@ static void showSudokuPane(Rect c) {
     showCursor();
     int mistakes = 0;
     
+    // Mark given cells
     for (int i = 0; i < SIZE; i++)
         for (int j = 0; j < SIZE; j++)
             given[i][j] = (puzzle[i][j] != 0);
@@ -661,12 +662,15 @@ static void showSudokuPane(Rect c) {
             continue;
         }
         
+        // Process move
         if (val == 0) {
+            // Clear cell
             puzzle[row][col] = 0;
         } else if (solution[row][col] == val) {
-
+            // Correct move
             puzzle[row][col] = val;
         } else {
+            // Wrong move
             mistakes++;
             setCursor(c.x + 2, c.y + c.h - 1);
             printf(RED "❌ Wrong number! Mistakes: %d/%d" RESET, mistakes, MAX_MISTAKES);
@@ -690,12 +694,14 @@ static void print_bubble_sort_array_in_pane(Rect c, int arr[], int n, int idx1, 
     setCursor(x, y);
     
     for (int i = 0; i < n; i++) {
+        // Highlight elements being compared
         if (i == idx1 || i == idx2) {
             printf(YELLOW "[%2d]" RESET " ", arr[i]);
         } else {
             printf("%2d ", arr[i]);
         }
         
+        // Wrap to next line if needed
         if ((i + 1) % 15 == 0 && i < n - 1) {
             y++;
             setCursor(x, y);
@@ -713,7 +719,10 @@ static void bubble_sort_visualize_in_pane(Rect c, int arr[], int n, int fps) {
     
     for (i = 0; i < n - 1; i++) {
         for (j = 0; j < n - i - 1; j++) {
+            // Print the array state before comparison
             print_bubble_sort_array_in_pane(c, arr, n, j, j + 1, fps);
+            
+            // Check for user input
             if (_kbhit()) {
                 char ch = _getch();
                 if (ch == 27) return; // ESC to stop
@@ -722,15 +731,19 @@ static void bubble_sort_visualize_in_pane(Rect c, int arr[], int n, int fps) {
             delay_fps(fps);
 
             if (arr[j] > arr[j + 1]) {
+                // Swap the elements
                 temp = arr[j];
                 arr[j] = arr[j + 1];
                 arr[j + 1] = temp;
+
+                // Print the array state after the swap
                 print_bubble_sort_array_in_pane(c, arr, n, j, j + 1, fps);
                 delay_fps(fps);
             }
         }
     }
-
+    
+    // Final sorted array print
     clearContent(c);
     printIn(c, 0, 0, BOLD GREEN "=== SORTING COMPLETE ===" RESET);
     
@@ -757,6 +770,7 @@ static void showBubbleSortPane(Rect c) {
     clearContent(c);
     printIn(c, 0, 0, BOLD MAGENTA "Bubble Sort Visualization" RESET);
     
+    // Get FPS from user
     showCursor();
     setCursor(c.x + 2, c.y + 2);
     printf("Enter desired FPS (1-%d): ", FPS_MAX);
@@ -767,6 +781,7 @@ static void showBubbleSortPane(Rect c) {
     if (fps < FPS_MIN || fps > FPS_MAX) fps = FPS_DEFAULT;
     hideCursor();
     
+    // Generate random array
     int arr[BUBBLE_SORT_SIZE];
     srand((unsigned)time(NULL));
     for (int i = 0; i < BUBBLE_SORT_SIZE; i++) {
@@ -783,7 +798,9 @@ static void generate_maze(int x, int y) {
     int i;
     int rand_dir;
     int nx, ny;
-     for(i = 0; i < 4; i++) {
+    
+    // Shuffle directions
+    for(i = 0; i < 4; i++) {
         rand_dir = rand() % 4;
         int temp_dx = dx[i];
         int temp_dy = dy[i];
@@ -825,9 +842,9 @@ static void print_maze_in_pane(Rect c, int fps) {
                 printf(" ");
             } else if (maze[i][j] == '#') {
                 printf(BLUE "#" RESET);
-            } else if (maze[i][j] == '*') { 
+            } else if (maze[i][j] == '*') { // Path being explored
                 printf(YELLOW "*" RESET);
-            } else if (maze[i][j] == '.') { 
+            } else if (maze[i][j] == '.') { // Solution path
                 printf(GREEN "." RESET);
             } else {
                 printf("%c", maze[i][j]);
@@ -839,24 +856,26 @@ static void print_maze_in_pane(Rect c, int fps) {
     printf(YELLOW "Press ESC to stop solving..." RESET);
 }
 
+// Depth-First Search (DFS) maze solver
 static int solve_maze_dfs_in_pane(Rect c, int x, int y, int fps) {
     if (x < 0 || x >= MAZE_ROWS || y < 0 || y >= MAZE_COLS) return 0;
-    if (maze[x][y] == 'E') return 1; 
-    if (maze[x][y] == '#' || maze[x][y] == '*') return 0;
+    if (maze[x][y] == 'E') return 1; // Found the end
+    if (maze[x][y] == '#' || maze[x][y] == '*') return 0; // Wall or already visited
 
-    maze[x][y] = '*'; 
+    maze[x][y] = '*'; // Mark as part of the current path
     print_maze_in_pane(c, fps);
     
+    // Check for user input
     if (_kbhit()) {
         char ch = _getch();
-        if (ch == 27) return 0;
+        if (ch == 27) return 0; // ESC to stop
     }
     
     delay_fps(fps);
     
-
+    // Explore neighbors (up, down, left, right)
     if (solve_maze_dfs_in_pane(c, x + 1, y, fps)) {
-        maze[x][y] = '.'; 
+        maze[x][y] = '.'; // Mark as final solution path
         return 1;
     }
     if (solve_maze_dfs_in_pane(c, x - 1, y, fps)) {
@@ -959,7 +978,7 @@ int main(void) {
     Rect sidebar, content;
     drawAppChrome(&sidebar, &content);
 
- 
+    // Updated: 8 options now (added Bubble Sort, Maze Solver)
     int selected = 0, numOptions = 8;
     drawSidebar(sidebar, selected);
 
@@ -991,6 +1010,7 @@ int main(void) {
                     printf(RED "Thanks for using our educational system!\n" RESET);
                     return 0;
             }
+            // redraw after returning from a pane
             drawAppChrome(&sidebar, &content);
             drawSidebar(sidebar, selected);
         }
